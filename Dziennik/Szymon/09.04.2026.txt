@@ -1,0 +1,5 @@
+Dnia dzisiejszego w ramach praktyk zajmowałem się konfiguracją narzędzia GitHub, które służy do zarządzania kodem oraz współpracy w zespole programistycznym. Podczas wykonywania zadania zapoznałem się z podstawowymi funkcjami platformy, takimi jak tworzenie repozytoriów, zarządzanie wersjami plików oraz korzystanie z systemu kontroli wersji Git. Skonfigurowałem swoje konto oraz połączyłem je z lokalnym środowiskiem pracy.
+
+Kolejnym zadaniem było wykonanie projektu graficznego. W jego ramach opracowałem wstępny wygląd projektu, dobierając odpowiednią kolorystykę, czcionki oraz układ elementów. Skupiłem się na estetyce oraz czytelności projektu, starając się dostosować go do założeń i potrzeb użytkownika.
+
+Dzień praktyk pozwolił mi rozwinąć umiejętności zarówno techniczne, jak i kreatywne, a także lepiej zrozumieć proces tworzenia oraz zarządzania projektem.
