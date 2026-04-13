@@ -1,0 +1,1 @@
+Dzisiaj dalsze prace na UI, dodanie logowania i prace nad wyglądem aplikacji.
