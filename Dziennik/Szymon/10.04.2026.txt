@@ -1,0 +1,1 @@
+Dziś zajmowałem się naprawą małej usterki narzędzia Git. Następnie projektowałem jedną z podstron aplikacji, której celem jest prezentacja oraz umożliwienie wyboru ćwiczeń sportowych z listy. Na koniec wprowadzałem drobne poprawki wizualne i funkcjonalne w pozostałych podstronach aplikacji.
