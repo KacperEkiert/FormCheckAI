@@ -1,5 +1,9 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
 import Webcam from "react-webcam";
+import * as cocoSsd from "@tensorflow-models/coco-ssd";
+import "@tensorflow/tfjs-backend-webgl";
+import "@tensorflow/tfjs-backend-cpu";
+import * as tf from "@tensorflow/tfjs-core";
 import { 
   BrainCircuit, Footprints, AlertTriangle, 
   CameraOff, LayoutGrid, Activity as ActivityIcon, Play, Square,
@@ -40,7 +44,14 @@ const pickSide = (l, r) => {
   return rv > lv ? "right" : "left";
 };
 
-const CameraView = ({ isActive, feedback }) => {
+const normalizeLandmark = (p, hipCenter, scale) => ({
+  x: (p.x - hipCenter.x) / scale,
+  y: (p.y - hipCenter.y) / scale,
+  z: (p.z ?? 0) / scale,
+  v: p.visibility ?? 0,
+});
+
+const CameraView = ({ isActive, feedback, selectedExercise }) => {
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
   const cameraRef = useRef(null);
@@ -60,6 +71,88 @@ const CameraView = ({ isActive, feedback }) => {
   const feedbackLockUntilRef = useRef(0);
   const lastFeedbackKeyRef = useRef(null);
   const toeLiftEmaRef = useRef(0);
+  const [datasetRecording, setDatasetRecording] = useState(false);
+  const [datasetSamples, setDatasetSamples] = useState(0);
+  const [dogGreeting, setDogGreeting] = useState(null);
+  const [dogStatus, setDogStatus] = useState("OFF");
+  const datasetFramesRef = useRef([]);
+  const datasetStartedAtRef = useRef(0);
+  const lastDatasetSampleAtRef = useRef(0);
+  const dogModelRef = useRef(null);
+  const dogIntervalRef = useRef(null);
+  const dogCooldownUntilRef = useRef(0);
+  const dogDetectBusyRef = useRef(false);
+
+  const exportDataset = () => {
+    if (!datasetFramesRef.current.length) return;
+    const payload = {
+      app: "FormCheckAI",
+      exercise: selectedExercise,
+      createdAt: new Date().toISOString(),
+      samples: datasetFramesRef.current.length,
+      fpsApprox: 10,
+      schemaVersion: 1,
+      frames: datasetFramesRef.current,
+    };
+    const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `formcheckai-${selectedExercise?.replace(/\s+/g, "_") || "exercise"}-${ts}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const clearDataset = () => {
+    datasetFramesRef.current = [];
+    setDatasetSamples(0);
+  };
+
+  const stopDogWatcher = () => {
+    if (dogIntervalRef.current) {
+      clearInterval(dogIntervalRef.current);
+      dogIntervalRef.current = null;
+    }
+    setDogGreeting(null);
+    setDogStatus("OFF");
+  };
+
+  const startDogWatcher = async () => {
+    if (dogIntervalRef.current) return;
+    setDogStatus("INIT");
+    try {
+      await tf.setBackend("webgl");
+      await tf.ready();
+    } catch {
+      await tf.setBackend("cpu");
+      await tf.ready();
+    }
+    if (!dogModelRef.current) {
+      dogModelRef.current = await cocoSsd.load();
+    }
+    setDogStatus("ON");
+    dogIntervalRef.current = setInterval(async () => {
+      if (dogDetectBusyRef.current) return;
+      try {
+        dogDetectBusyRef.current = true;
+        const videoEl = webcamRef.current?.video;
+        if (!videoEl || videoEl.readyState < 2 || videoEl.videoWidth < 32 || !dogModelRef.current) return;
+        const predictions = await dogModelRef.current.detect(videoEl, 10);
+        const dog = predictions.find((p) => p.class === "dog" && p.score > 0.35);
+        if (dog && Date.now() >= dogCooldownUntilRef.current) {
+          dogCooldownUntilRef.current = Date.now() + 7000;
+          setDogGreeting("Hej piesku! Witaj, piesku miłości! 🐶💙");
+          window.setTimeout(() => setDogGreeting(null), 4500);
+        }
+      } catch {
+        setDogStatus("ERR");
+        stopDogWatcher();
+      } finally {
+        dogDetectBusyRef.current = false;
+      }
+    }, 1200);
+  };
 
   const onResults = (results) => {
     if (!canvasRef.current || !webcamRef.current?.video) return;
@@ -100,6 +193,7 @@ const CameraView = ({ isActive, feedback }) => {
       const knee = S.knee ?? midpoint(L.knee, R.knee);
       const ankle = S.ankle ?? midpoint(L.ankle, R.ankle);
       const shoulder = S.shoulder ?? midpoint(L.shoulder, R.shoulder);
+      const hipCenter = midpoint(L.hip, R.hip);
 
       // Minimalna jakość detekcji wymaganej do generowania feedbacku.
       const visOk =
@@ -231,6 +325,43 @@ const CameraView = ({ isActive, feedback }) => {
         feedbackLockUntilRef.current = now + 2200;
       }
 
+      if (datasetRecording) {
+        if (!datasetStartedAtRef.current) datasetStartedAtRef.current = now;
+        if (now - lastDatasetSampleAtRef.current >= 100) {
+          lastDatasetSampleAtRef.current = now;
+          const bodyScale = Math.max(Math.abs(shoulder.y - hip.y), 0.001);
+          const points = {
+            lHip: normalizeLandmark(lm[23], hipCenter, bodyScale),
+            rHip: normalizeLandmark(lm[24], hipCenter, bodyScale),
+            lKnee: normalizeLandmark(lm[25], hipCenter, bodyScale),
+            rKnee: normalizeLandmark(lm[26], hipCenter, bodyScale),
+            lAnkle: normalizeLandmark(lm[27], hipCenter, bodyScale),
+            rAnkle: normalizeLandmark(lm[28], hipCenter, bodyScale),
+            lHeel: normalizeLandmark(lm[29], hipCenter, bodyScale),
+            rHeel: normalizeLandmark(lm[30], hipCenter, bodyScale),
+            lFoot: normalizeLandmark(lm[31], hipCenter, bodyScale),
+            rFoot: normalizeLandmark(lm[32], hipCenter, bodyScale),
+            lShoulder: normalizeLandmark(lm[11], hipCenter, bodyScale),
+            rShoulder: normalizeLandmark(lm[12], hipCenter, bodyScale),
+          };
+          datasetFramesRef.current.push({
+            t: now - datasetStartedAtRef.current,
+            side,
+            phase,
+            features: {
+              kneeAngle: Number(kAngle.toFixed(3)),
+              ankleAngle: Number(ankleAngle.toFixed(3)),
+              torsoAngleFromVertical: Number(torsoAngleFromVertical.toFixed(3)),
+              depth: Number(depth.toFixed(3)),
+              heelLift: Number(heelLift.toFixed(5)),
+            },
+            labels: flags,
+            points,
+          });
+          setDatasetSamples(datasetFramesRef.current.length);
+        }
+      }
+
       // 3) Lekki HUD diagnostyczny bezpośrednio na canvasie.
       canvasCtx.save();
       canvasCtx.scale(-1, 1); // mirror text with mirrored canvas
@@ -269,6 +400,7 @@ const CameraView = ({ isActive, feedback }) => {
       setDepthScore(null);
       setQualityFlags({ valgus: false, lean: false, shallow: false, toes: false });
       setActiveIssues([]);
+      setDatasetSamples(datasetFramesRef.current.length);
       minKneeAngleRef.current = 999;
       lastRepAtRef.current = 0;
       toeLiftEmaRef.current = 0;
@@ -303,6 +435,7 @@ const CameraView = ({ isActive, feedback }) => {
         height: 720,
       });
       await cameraRef.current.start();
+      await startDogWatcher();
     };
     initPose();
     return () => {
@@ -311,8 +444,11 @@ const CameraView = ({ isActive, feedback }) => {
       cameraRef.current = null;
       if (poseRef.current) poseRef.current.close();
       poseRef.current = null;
+      datasetStartedAtRef.current = 0;
+      lastDatasetSampleAtRef.current = 0;
+      stopDogWatcher();
     };
-  }, [isActive, poseOptions]);
+  }, [datasetRecording, isActive, poseOptions, selectedExercise]);
 
   return (
     <div className="relative w-full h-full bg-slate-950 rounded-2xl border-4 border-slate-700 overflow-hidden shadow-2xl flex items-center justify-center">
@@ -349,7 +485,41 @@ const CameraView = ({ isActive, feedback }) => {
                 <p className="text-emerald-300">Brak krytycznych błędów techniki.</p>
               )}
             </div>
+            <div className="mt-1 text-[10px] text-slate-300 font-mono uppercase">
+              Dog detector: <span className={dogStatus === "ON" ? "text-emerald-300" : dogStatus === "ERR" ? "text-red-300" : "text-slate-400"}>{dogStatus}</span>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px]">
+              <button
+                onClick={() => setDatasetRecording((v) => !v)}
+                className={`px-3 py-1 rounded border uppercase tracking-widest font-bold ${datasetRecording ? "border-red-500 text-red-300 bg-red-500/10" : "border-sky-500 text-sky-300 bg-sky-500/10"}`}
+              >
+                {datasetRecording ? "Stop Dataset" : "Start Dataset"}
+              </button>
+              <button
+                onClick={exportDataset}
+                disabled={datasetSamples === 0}
+                className={`px-3 py-1 rounded border uppercase tracking-widest font-bold ${datasetSamples === 0 ? "border-slate-700 text-slate-500 cursor-not-allowed" : "border-emerald-500 text-emerald-300 bg-emerald-500/10"}`}
+              >
+                Export JSON
+              </button>
+              <button
+                onClick={clearDataset}
+                disabled={datasetSamples === 0}
+                className={`px-3 py-1 rounded border uppercase tracking-widest font-bold ${datasetSamples === 0 ? "border-slate-700 text-slate-500 cursor-not-allowed" : "border-amber-500 text-amber-300 bg-amber-500/10"}`}
+              >
+                Wyczyść
+              </button>
+              <span className="px-2 py-1 rounded border border-slate-700 text-slate-300 font-mono">
+                Próbki: {datasetSamples}
+              </span>
+            </div>
           </div>
+        </div>
+      )}
+      {dogGreeting && isActive && (
+        <div className="absolute bottom-4 left-4 right-4 bg-pink-500/20 border border-pink-300/60 rounded-xl px-4 py-3 text-center shadow-xl">
+          <p className="text-pink-100 font-black uppercase tracking-widest text-xs">Easter Egg</p>
+          <p className="text-white font-bold text-lg">{dogGreeting}</p>
         </div>
       )}
     </div>
@@ -419,7 +589,7 @@ export default function App() {
         </section>
 
         <section className="flex flex-col gap-4">
-          <div className="flex-grow min-h-[450px]"><CameraView isActive={trainingActive} feedback={trainingActive ? "System kalibruje..." : null} /></div>
+          <div className="flex-grow min-h-[450px]"><CameraView isActive={trainingActive} feedback={trainingActive ? "System kalibruje..." : null} selectedExercise={selectedMuscle.name} /></div>
           <div className="bg-slate-900 p-2 pl-6 rounded-2xl border border-slate-800 flex items-center justify-between shadow-lg h-[64px]">
             <div className="flex items-center gap-3">
               <div className={`h-2.5 w-2.5 rounded-full transition-all duration-500 ${!trainingActive ? 'bg-red-500' : (trainingActive && !window.drawConnectors) ? 'bg-amber-500 animate-pulse' : 'bg-green-500'}`}></div>
