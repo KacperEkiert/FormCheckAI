@@ -1,0 +1,1 @@
+Wrzucenie stronki na serwer. Pozniej tylko walka z wiatrakami w postaci ai. Dzieki temu lepiej poznałem mechanikę działania projektu. Naszczescie miejsce na bledy również jest uwzględnione w planach
