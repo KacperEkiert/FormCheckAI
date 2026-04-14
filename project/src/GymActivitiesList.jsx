@@ -1,7 +1,7 @@
 import React from 'react';
 import { Dumbbell, Timer, Trophy, ChevronRight, Zap, Flame } from 'lucide-react';
 
-const ACTIVITIES = [
+export const ACTIVITIES = [
   { id: 1, name: 'Przysiady Klasyczne', category: 'Nogi', time: '15m', icon: <Zap size={16} className="text-amber-400"/> },
   { id: 2, name: 'Pompki Diamentowe', category: 'Klatka', time: '10m', icon: <Dumbbell size={16} className="text-sky-400"/> },
   { id: 3, name: 'Plank (Deska)', category: 'Core', time: '5m', icon: <Timer size={16} className="text-emerald-400"/> },
