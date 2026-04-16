@@ -1,0 +1,1 @@
+Dzisiejszego dnia pracowałem nad systemem sztucznej inteligencji do odczytywania ruchu z kamery. Zajmowałem się analizą obrazu oraz testowaniem działania algorytmów wykrywania ruchu.
