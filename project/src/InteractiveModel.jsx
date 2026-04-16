@@ -5,7 +5,6 @@ import { useGLTF, PresentationControls, Stage, Html } from '@react-three/drei'
 function Model({ onPartClick, selectedCategory }) {
   const { nodes } = useGLTF('/human_model.glb')
 
-  // Mapowanie: "Nazwa_z_Blendera": "KATEGORIA_W_APP"
   const nameMap = {
     "Klata": "KLATKA",
     "Uda": "NOGI",
@@ -36,9 +35,8 @@ function Model({ onPartClick, selectedCategory }) {
           <mesh
             key={name}
             geometry={obj.geometry}
-            // KLUCZOWE: Wymuszamy logowanie nazwy mesha
             onClick={(e) => {
-              e.stopPropagation(); // Zapobiega klikaniu wielu warstw naraz
+              e.stopPropagation(); 
               console.log("%c >>> KLIKNIĘTO MESH:", "color: #38bdf8; font-weight: bold", name);
               
               if (isSelectable) {
@@ -74,7 +72,7 @@ export default function InteractiveModel({ onSelect, currentCategory }) {
       <Canvas 
         dpr={[1, 2]} 
         camera={{ fov: 45, position: [0, 0, 5] }}
-        style={{ touchAction: 'none' }} // Zapobiega konfliktom na urządzeniach dotykowych
+        style={{ touchAction: 'none' }} 
       >
         <color attach="background" args={['#020617']} />
         
@@ -87,9 +85,8 @@ export default function InteractiveModel({ onSelect, currentCategory }) {
             global 
             zoom={1}
             polar={[-0.1, Math.PI / 4]}
-            config={{ mass: 1, tension: 170, friction: 26 }} // Płynniejszy obrót
+            config={{ mass: 1, tension: 170, friction: 26 }} 
           >
-            {/* adjustCamera={true} sprawia, że model nie jest mały i wypełnia okno */}
             <Stage environment="city" intensity={0.5} contactShadow={false} adjustCamera={true}>
               <Model onPartClick={onSelect} selectedCategory={currentCategory} />
             </Stage>

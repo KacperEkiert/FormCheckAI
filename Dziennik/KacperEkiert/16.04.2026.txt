@@ -1,0 +1,1 @@
+Dzisiaj zajmowałem się implementacją i logiką związaną z analizą przysiadu na kamerce tego typu benc.

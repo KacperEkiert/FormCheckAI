@@ -1,10 +1,8 @@
-// src/Gate.jsx
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import Auth from './Auth';
 import App from './App';
 
-// MUSI BYĆ "export default function"
 export default function Gate() { 
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);

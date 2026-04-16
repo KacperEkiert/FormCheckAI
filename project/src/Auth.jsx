@@ -51,7 +51,7 @@ const InputField = ({ name, icon: Icon, placeholder, type = "text", error, showE
 
 export default function Auth() {
   const [isRegistering, setIsRegistering] = useState(false);
-  const [isEmailSent, setIsEmailSent] = useState(false); // Nowy stan dla flow weryfikacji
+  const [isEmailSent, setIsEmailSent] = useState(false); 
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
@@ -118,7 +118,6 @@ export default function Auth() {
         });
         if (error) throw error;
 
-        // FLOW: Jeśli sesja jest pusta, znaczy że trzeba potwierdzić maila
         if (data?.user && !data?.session) {
           setIsEmailSent(true);
         }
@@ -146,7 +145,7 @@ export default function Auth() {
       </div>
 
       <div className={`relative w-full max-w-[380px] z-10 ${isShaking ? 'animate-shake' : ''}`}>
-        <div className="bg-[#0f172a]/80 backdrop-blur-2xl border border-slate-800 p-8 rounded-3xl shadow-[0_0_60px_rgba(0,0,0,0.7)] relative z-10">
+        <div className="bg-[#0f172a]/80 backdrop-blur-2xl border border-slate-800 p-6 sm:p-8 rounded-3xl shadow-[0_0_60px_rgba(0,0,0,0.7)] relative z-10">
           
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-12 h-12 bg-sky-500 border border-sky-400 rounded-2xl mb-4 shadow-[0_0_25px_rgba(14,165,233,0.4)] rotate-3">
@@ -158,7 +157,6 @@ export default function Auth() {
           </div>
 
           {isEmailSent ? (
-            /* WIDOK POTWIERDZENIA MAILA */
             <div className="text-center py-4 animate-in fade-in zoom-in-95 duration-500">
               <div className="w-16 h-16 bg-sky-500/10 border border-sky-500/20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(14,165,233,0.1)]">
                 <Mail className="text-sky-400 w-8 h-8 animate-bounce" />
@@ -176,7 +174,6 @@ export default function Auth() {
               </button>
             </div>
           ) : (
-            /* FORMULARZ LOGOWANIA / REJESTRACJI */
             <>
               {authError && (
                 <div className="mb-5 p-3.5 bg-red-500/10 border border-red-500/40 rounded-xl text-red-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-3 animate-in fade-in zoom-in-95">
@@ -187,7 +184,7 @@ export default function Auth() {
               <form onSubmit={handleAuth} noValidate className="space-y-1">
                 {isRegistering ? (
                   <>
-                    <div className="grid grid-cols-2 gap-x-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3">
                       <InputField name="firstName" icon={User} placeholder="Imię" value={formData.firstName} error={errors.firstName} onChange={handleChange} isCompact />
                       <InputField name="lastName" placeholder="Nazwisko" value={formData.lastName} error={errors.lastName} onChange={handleChange} isCompact />
                     </div>
