@@ -11,6 +11,7 @@ import {
 import GymActivitiesList from './GymActivitiesList';
 import InteractiveModel from './InteractiveModel';
 import FeedbackPage from './FeedbackPage';
+import UserProfile from './UserProfile'; // Dodano import profilu
 import { supabase } from './supabaseClient';
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
@@ -157,7 +158,6 @@ const CameraView = ({ isActive, selectedExercise, onWorkoutFinish }) => {
     
     const init = async () => {
       try {
-        // Sprawdzenie HTTPS / Secure Context
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
           setSetupHint("BŁĄD: Wymagane połączenie HTTPS do obsługi kamery.");
           return;
@@ -222,6 +222,7 @@ export default function App() {
   const [selectedEx, setSelectedEx] = useState({ name: "Przysiady Klasyczne", id: "001", category: "Nogi" });
   const [active, setActive] = useState(false);
   const [lastWorkout, setLastWorkout] = useState(null);
+  const [avatarUrl, setAvatarUrl] = useState(localStorage.getItem('userAvatar') || null); // Dodano stan zdjęcia
 
   const handleWorkoutFinish = (reps, videoURL, debugInfo) => {
     setLastWorkout({ name: selectedEx.name, category: selectedEx.category, reps, videoUrl: videoURL, debug: debugInfo, score: debugInfo.score, date: new Date().toLocaleTimeString() });
@@ -260,7 +261,16 @@ export default function App() {
           {[
             { view: 'list', icon: <LayoutGrid size={22} />, label: 'Biblioteka' },
             { view: 'model', icon: <ActivityIcon size={22} />, label: 'Trening' },
-            { view: 'feedback', icon: <History size={22} />, label: 'Raport', disabled: !lastWorkout }
+            { view: 'feedback', icon: <History size={22} />, label: 'Raport', disabled: !lastWorkout },
+            { 
+              view: 'profile', 
+              icon: avatarUrl ? (
+                <img src={avatarUrl} className="w-6 h-6 rounded-full object-cover border border-sky-400" />
+              ) : (
+                <User size={22} />
+              ), 
+              label: 'Profil' 
+            } // Dodano profil do menu
           ].map((item) => (
             <button
               key={item.view}
@@ -293,12 +303,28 @@ export default function App() {
         <header className="flex justify-between items-center mb-6 gap-4">
           <div className="flex items-center gap-4">
             {!isSidebarOpen && <button onClick={() => setIsSidebarOpen(true)} className="p-2 bg-slate-900 border border-slate-800 rounded-xl text-sky-400 md:hidden"><Menu size={24} /></button>}
-            <p className="text-xl md:text-2xl font-black uppercase italic tracking-tight text-white">{currentView === 'list' ? 'Eksploruj Bibliotekę' : 'Twoja Sesja AI'}</p>
+            <p className="text-xl md:text-2xl font-black uppercase italic tracking-tight text-white">
+              {currentView === 'list' ? 'Eksploruj Bibliotekę' : 
+               currentView === 'profile' ? 'Twój Profil' : 'Twoja Sesja AI'}
+            </p>
           </div>
-          <div className="h-10 w-10 bg-slate-800 rounded-full border border-slate-700 flex items-center justify-center shrink-0"><Settings size={20} className="text-slate-400" /></div>
+          <div className="h-10 w-10 bg-slate-800 rounded-full border border-slate-700 flex items-center justify-center shrink-0">
+            <Settings size={20} className="text-slate-400 cursor-pointer hover:text-sky-400 transition-colors" onClick={() => setCurrentView('profile')} />
+          </div>
         </header>
+
         <div className="flex-grow">
-          {currentView === 'feedback' ? <FeedbackPage workoutData={lastWorkout} onBack={() => setCurrentView('list')} onSelectNewExercise={(ex) => { setSelectedEx(ex); setCurrentView('model'); }} /> : (
+          {currentView === 'feedback' ? (
+            <FeedbackPage workoutData={lastWorkout} onBack={() => setCurrentView('list')} onSelectNewExercise={(ex) => { setSelectedEx(ex); setCurrentView('model'); }} />
+          ) : currentView === 'profile' ? (
+            <UserProfile 
+              avatarUrl={avatarUrl} 
+              onAvatarChange={(newUrl) => {
+                setAvatarUrl(newUrl);
+                localStorage.setItem('userAvatar', newUrl);
+              }} 
+            />
+          ) : (
             <div className="h-full flex flex-col xl:grid xl:grid-cols-2 gap-6">
               <section className="flex flex-col gap-4 min-h-[400px] order-2 xl:order-1">
                 <div className="flex-grow bg-slate-900/40 rounded-[2rem] border border-slate-800 overflow-hidden relative shadow-inner">
