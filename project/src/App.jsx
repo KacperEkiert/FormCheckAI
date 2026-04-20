@@ -111,6 +111,7 @@ const CameraView = ({ isActive, selectedExercise, onWorkoutFinish }) => {
             const bPen = (s.poorBackFrames / s.totalFrames) * 200;
             const dPen = (s.shallowReps / (repCountRef.current || 1)) * 30;
             score = Math.max(0, Math.round(score - hPen - bPen - dPen));
+            speak(`Świetna robota! Ukończyłeś trening. Wykonałeś ${repCountRef.current} powtórzeń. Sprawdź swój raport.`, "finish", 1000);
             onWorkoutFinish(repCountRef.current, url, {
               knee: { min: Math.min(...s.kneeAngles) || 0, avg: Math.round(s.kneeAngles.reduce((a,b)=>a+b,0)/s.kneeAngles.length) || 0 },
               back: { max: Math.max(...s.backAngles) || 0, avg: Math.round(s.backAngles.reduce((a,b)=>a+b,0)/s.backAngles.length) || 0 },
@@ -124,6 +125,7 @@ const CameraView = ({ isActive, selectedExercise, onWorkoutFinish }) => {
       return () => clearTimeout(timer);
     }
   }, [workoutStage]);
+  
 
   const onResults = (results) => {
     if (!canvasRef.current || !results.image) return;
@@ -175,11 +177,19 @@ const CameraView = ({ isActive, selectedExercise, onWorkoutFinish }) => {
         ctx.font = "bold 14px monospace"; ctx.shadowBlur = 4; ctx.shadowColor = "black";
         ctx.fillStyle = isDeep ? "#22c55e" : "#f59e0b"; ctx.fillText(`${kneeA}° DEPTH`, lm[sIdx.k].x * width + 15, lm[sIdx.k].y * height);
         ctx.fillStyle = bColor; ctx.fillText(`${backT}° BACK`, lm[sIdx.h].x * width + 15, lm[sIdx.h].y * height);
-        
+         if (lifted) { ctx.beginPath(); ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 5; ctx.moveTo(lm[sIdx.heel].x * width - 20, lm[sIdx.heel].y * height + 5); ctx.lineTo(lm[sIdx.heel].x * width + 20, lm[sIdx.heel].y * height + 5); ctx.stroke(); }
         if (kneeA < 110 && phase !== "down") setPhase("down");
         if (kneeA > 160 && phase === "down") { 
           const minKnee = Math.min(...statsRef.current.kneeAngles.slice(-30));
-          if (minKnee > 105) statsRef.current.shallowReps++; 
+           if (minKnee > 105) {
+            statsRef.current.shallowReps++; 
+            speak("Zejdź nieco niżej przy kolejnym powtórzeniu. Pełny zakres ruchu daje najlepsze efekty.", "depth_error", 5000);
+          } else {
+            const nextCount = repCountRef.current + 1;
+            if (nextCount % 5 === 0) {
+              speak(`Świetnie! Masz już ${nextCount} powtórzeń. Tak trzymaj!`, "milestone", 3000);
+            }
+          }
           setRepCount(prev => { repCountRef.current = prev + 1; return prev + 1; }); 
           setPhase("up"); 
         }
@@ -189,7 +199,7 @@ const CameraView = ({ isActive, selectedExercise, onWorkoutFinish }) => {
         ctx.fillStyle = bColor; ctx.fillText(`BACK: ${bStat}`, 25, 80);
         ctx.fillStyle = lifted ? "#ef4444" : "#22c55e"; ctx.fillText(`FEET: ${lifted ? '⚠ HEELS UP!' : '✓ GROUNDED'}`, 25, 100); ctx.restore();
       }
-      if (window.drawConnectors) window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: "rgba(56, 189, 248, 0.5)", lineWidth: 2 });
+      if (window.drawConnectors) window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: stage === 'active' ? "rgba(56, 189, 248, 0.5)" : "rgba(255, 255, 255, 0.1)", lineWidth: 2 });
     }
   };
 
@@ -198,18 +208,29 @@ const CameraView = ({ isActive, selectedExercise, onWorkoutFinish }) => {
 
   useEffect(() => {
     if (!videoRef.current) return;
+    
     const init = async () => {
       try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setSetupHint("BŁĄD: Wymagane połączenie HTTPS do obsługi kamery.");
+          return;
+        }
+
         poseRef.current = new window.Pose({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}` });
         poseRef.current.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
         poseRef.current.onResults((res) => onResultsRef.current(res));
+        
         cameraRef.current = new window.Camera(videoRef.current, { 
           onFrame: async () => { if (videoRef.current) await poseRef.current.send({ image: videoRef.current }); }, 
           width: 1280, height: 720 
         });
+        
         await cameraRef.current.start();
-      } catch (err) { console.error(err); }
-    };
+      } catch (err) {
+        console.error("Camera init failed:", err);
+        setSetupHint("Nie udało się uruchomić kamery.");
+      }
+    }
     init();
     return () => { cameraRef.current?.stop(); poseRef.current?.close(); };
   }, []);
@@ -229,14 +250,17 @@ const CameraView = ({ isActive, selectedExercise, onWorkoutFinish }) => {
       )}
       <div className="absolute inset-0 pointer-events-none z-50 flex items-center justify-center p-6 text-center">
         {workoutStage === 'calibrating' && (
-          <div className="bg-slate-900/95 border-2 border-sky-500/50 backdrop-blur-xl p-8 rounded-[2.5rem] flex flex-col items-center gap-6">
+             <div className="bg-slate-900/95 border-2 border-sky-500/50 backdrop-blur-xl p-8 rounded-[2.5rem] shadow-[0_0_80px_rgba(0,0,0,0.8)] flex flex-col items-center gap-6 animate-in fade-in zoom-in">
             <h3 className="text-2xl font-black uppercase tracking-widest text-white">{setupHint}</h3>
             {calibProgress > 0 && <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-green-500 h-full transition-all duration-100" style={{ width: `${calibProgress}%` }} /></div>}
             <div className="w-48 h-72 border-2 border-dashed border-sky-500/30 rounded-3xl" />
           </div>
         )}
         {workoutStage === 'starting' && (
-          <div className="animate-in zoom-in fade-in"><div className="bg-green-500 text-black font-black text-8xl px-20 py-10 rounded-full shadow-[0_0_100px_#22c55e] italic">ZACZYNAJ!</div></div>
+           <div className="animate-in zoom-in fade-in"><div className="bg-green-500 text-black font-black text-8xl px-20 py-10 rounded-full shadow-[0_0_100px_#22c55e] italic animate-bounce">ZACZYNAJ!</div></div>
+        )}
+        {workoutStage === 'active' && isHeelLifted && (
+          <div className="absolute bottom-32 bg-red-600 text-white font-black px-10 py-4 rounded-2xl shadow-2xl animate-bounce border-4 border-white">PRZYKLEJ PIĘTY DO ZIEMI!</div>
         )}
       </div>
     </div>
@@ -317,7 +341,9 @@ export default function App() {
                 ${item.disabled ? 'opacity-20 cursor-not-allowed' : ''}
                 ${currentView === item.view ? 'bg-sky-500 text-slate-950 shadow-[0_0_25px_rgba(14,165,233,0.3)]' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
             >
-              <div className="shrink-0 group-hover:scale-110 transition-transform">{item.icon}</div>
+        <div className={`shrink-0 transition-transform duration-300 ${currentView === item.view ? 'scale-110' : 'group-hover:scale-110'}`}>
+                {item.icon}
+              </div>
               <span className={`font-black text-xs uppercase tracking-[0.2em] transition-all duration-500 whitespace-nowrap 
                 ${isSidebarOpen ? 'opacity-100 max-w-[150px]' : 'opacity-0 max-w-0 overflow-hidden'}`}>
                 {item.label}
