@@ -1,27 +1,8 @@
-import React, { useState } from 'react';
-import { 
-  Dumbbell, Timer, Trophy, ChevronRight, Zap, 
-  Flame, Medal, X, Award, Target
-} from 'lucide-react';
-
-export const ACTIVITIES = [
-  { id: 1, name: 'Przysiady Klasyczne', category: 'Nogi', time: '15m', icon: <Zap size={16} className="text-amber-400"/>, achievement: "Król Przysiadów" },
-  { id: 2, name: 'Pompki Diamentowe', category: 'Klatka', time: '10m', icon: <Dumbbell size={16} className="text-sky-400"/>, achievement: "Twardy jak Diament" },
-  { id: 3, name: 'Plank (Deska)', category: 'Core', time: '5m', icon: <Timer size={16} className="text-emerald-400"/>, achievement: "Łamacz Desek" },
-  { id: 4, name: 'Wykroki AI', category: 'Nogi', time: '20m', icon: <Zap size={16} className="text-amber-400"/>, achievement: "Cyber-Wykrok" },
-  { id: 5, name: 'Podciąganie', category: 'Plecy', time: '15m', icon: <Trophy size={16} className="text-emerald-400"/>, achievement: "Wspinaczka na Szczyt" },
-  { id: 6, name: 'Wyciskanie Żołnierskie', category: 'Barki', time: '12m', icon: <Zap size={16} className="text-amber-400"/>, achievement: "Generał Barków" },
-  { id: 7, name: 'Uginanie ramion', category: 'Biceps', time: '10m', icon: <Dumbbell size={16} className="text-sky-400"/>, achievement: "Stalowe Bicepsy" },
-  { id: 8, name: 'Dipy (Pompki tyłem)', category: 'Triceps', time: '12m', icon: <Dumbbell size={16} className="text-sky-400"/>, achievement: "Mistrz Tricepsu" },
-  { id: 9, name: 'Burpees', category: 'Kardio', time: '10m', icon: <Flame size={16} className="text-red-500"/>, achievement: "Piekielna Kondycja" },
-  { id: 10, name: 'Dead Bug', category: 'Core', time: '8m', icon: <Timer size={16} className="text-emerald-400"/>, achievement: "Pogromca Robaka" },
-  { id: 11, name: 'Wiosłowanie', category: 'Plecy', time: '15m', icon: <Trophy size={16} className="text-emerald-400"/>, achievement: "Galernik Mocy" },
-  { id: 12, name: 'Wspięcia na palce', category: 'Nogi', time: '10m', icon: <Dumbbell size={16} className="text-sky-400"/>, achievement: "Lekka Stopa" },
-  { id: 13, name: 'Uginanie nadgarstków z hantlami', category: 'Przedramie', time: '10m', icon: <Dumbbell size={16} className="text-sky-400"/>, achievement: "Uścisk Imadła" },
-];
+import React from 'react';
+import { ChevronRight } from 'lucide-react';
+import { ACTIVITIES } from './constants';
 
 const GymActivitiesList = ({ onSelectActivity, filter, setFilter }) => {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const categories = ['Wszystkie', 'Nogi', 'Klatka', 'Plecy', 'Barki', 'Biceps', 'Triceps', 'Core', 'Kardio', 'Przedramie'];
   const filtered = filter === 'Wszystkie' ? ACTIVITIES : ACTIVITIES.filter(a => a.category.toLowerCase() === filter.toLowerCase());
 

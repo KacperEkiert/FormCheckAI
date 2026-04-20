@@ -49,7 +49,7 @@ const InputField = ({ name, icon: Icon, placeholder, type = "text", error, showE
   </div>
 );
 
-export default function Auth() {
+export default function Auth({ onGoToLanding }) {
   const [isRegistering, setIsRegistering] = useState(false);
   const [isEmailSent, setIsEmailSent] = useState(false); 
   const [loading, setLoading] = useState(false);
@@ -148,12 +148,17 @@ export default function Auth() {
         <div className="bg-[#0f172a]/80 backdrop-blur-2xl border border-slate-800 p-6 sm:p-8 rounded-3xl shadow-[0_0_60px_rgba(0,0,0,0.7)] relative z-10">
           
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-12 h-12 bg-sky-500 border border-sky-400 rounded-2xl mb-4 shadow-[0_0_25px_rgba(14,165,233,0.4)] rotate-3">
-              <CheckCircle2 className="text-slate-900 w-6 h-6" />
+            <div 
+              onClick={onGoToLanding}
+              className="group cursor-pointer inline-block"
+            >
+              <div className="inline-flex items-center justify-center w-12 h-12 bg-sky-500 border border-sky-400 rounded-2xl mb-4 shadow-[0_0_25px_rgba(14,165,233,0.4)] rotate-3 group-hover:scale-110 group-hover:rotate-0 transition-all duration-300">
+                <CheckCircle2 className="text-slate-900 w-6 h-6" />
+              </div>
+              <h1 className="text-2xl font-black text-white tracking-tighter uppercase italic group-hover:text-sky-400 transition-colors duration-300">
+                FormCheck <span className="text-sky-400">AI</span>
+              </h1>
             </div>
-            <h1 className="text-2xl font-black text-white tracking-tighter uppercase italic">
-              FormCheck <span className="text-sky-400">AI</span>
-            </h1>
           </div>
 
           {isEmailSent ? (
