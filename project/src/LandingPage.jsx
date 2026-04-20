@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import React, { useRef } from 'react';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { ShieldCheck, Zap, ChevronRight, Cpu, Target, Play, Camera, BarChart3, MessageSquare, AlertTriangle, Home } from 'lucide-react';

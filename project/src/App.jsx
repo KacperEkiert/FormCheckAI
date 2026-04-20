@@ -3,13 +3,15 @@ import "@tensorflow/tfjs-backend-webgl";
 import { 
   BrainCircuit, Footprints, LayoutGrid, Activity as ActivityIcon, 
   Play, Square, LogOut, Menu, ChevronLeft, Settings, User, History, 
-  CheckCircle2, Clock, Timer
+  CheckCircle2, Clock, Timer, AlertCircle, Loader2, Medal, Award, X, Trophy, Target
 } from 'lucide-react';
 
+// IMPORTUJEMY AKTUALNĄ LISTĘ I STAŁĄ ACTIVITIES
 import GymActivitiesList from './GymActivitiesList';
+import { ACTIVITIES } from './constants';
 import InteractiveModel from './InteractiveModel';
 import FeedbackPage from './FeedbackPage';
-import UserProfile from './UserProfile';
+import UserProfile from './UserProfile'; 
 import { supabase } from './supabaseClient';
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
@@ -50,7 +52,7 @@ const CameraView = ({ isActive, isGuest, onWorkoutFinish }) => {
            null;
   };
 
-  const speak = (text, type, cooldown = 4000) => {
+  const speak = React.useCallback((text, type, cooldown = 4000) => {
     if (!window.speechSynthesis) return;
     const now = Date.now();
     if (window.speechSynthesis.speaking) return;
@@ -65,7 +67,7 @@ const CameraView = ({ isActive, isGuest, onWorkoutFinish }) => {
     
     lastSpokenRef.current[type] = now;
     window.speechSynthesis.speak(utterance);
-  };
+  }, []);
 
   useEffect(() => {
     if (window.speechSynthesis) {
@@ -88,16 +90,18 @@ const CameraView = ({ isActive, isGuest, onWorkoutFinish }) => {
   useEffect(() => {
     if (isActive) {
       statsRef.current = { kneeAngles: [], backAngles: [], shallowReps: 0, poorBackFrames: 0, heelLiftFrames: 0, totalFrames: 0 };
-      setWorkoutStage('calibrating');
-      setRepCount(0); repCountRef.current = 0;
-      calibrationFrames.current = 0; setCalibProgress(0);
-      setTimeLeft(isGuest ? 60 : 300);
-      setCountdown(isGuest ? 10 : 5);
+      setTimeout(() => {
+        setWorkoutStage('calibrating');
+        setRepCount(0); repCountRef.current = 0;
+        calibrationFrames.current = 0; setCalibProgress(0);
+        setTimeLeft(isGuest ? 60 : 300);
+        setCountdown(isGuest ? 10 : 5);
+      }, 0);
     } else {
       if (mediaRecorderRef.current?.state === "recording") {
         try { mediaRecorderRef.current.stop(); } catch(e) { console.error(e); }
       }
-      setWorkoutStage('idle');
+      setTimeout(() => setWorkoutStage('idle'), 0);
     }
   }, [isActive, isGuest]);
 
@@ -109,7 +113,7 @@ const CameraView = ({ isActive, isGuest, onWorkoutFinish }) => {
         timer = setInterval(() => setCountdown(c => c - 1), 1000);
         if (countdown <= 3) speak(countdown.toString(), "countdown", 900);
       } else {
-        setWorkoutStage('active');
+        setTimeout(() => setWorkoutStage('active'), 0);
         speak("Zaczynamy!", "start", 1000);
         if (videoRef.current?.srcObject) {
           chunksRef.current = [];
@@ -144,11 +148,11 @@ const CameraView = ({ isActive, isGuest, onWorkoutFinish }) => {
         if (timeLeft === 10) speak("Ostatnie 10 sekund!", "time_warning", 1000);
       } else {
         if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
-        setWorkoutStage('idle');
+        setTimeout(() => setWorkoutStage('idle'), 0);
       }
     }
     return () => clearInterval(timer);
-  }, [workoutStage, countdown, timeLeft, onWorkoutFinish]);
+  }, [workoutStage, countdown, timeLeft, onWorkoutFinish, speak]);
 
   useEffect(() => {
     if (!videoRef.current) return;
@@ -233,7 +237,7 @@ const CameraView = ({ isActive, isGuest, onWorkoutFinish }) => {
     };
     init();
     return () => { cameraRef.current?.stop(); poseRef.current?.close(); };
-  }, [phase]);
+  }, [phase, speak]);
 
   const formatTime = (s) => `${Math.floor(s/60)}:${(s%60).toString().padStart(2, '0')}`;
 
@@ -302,22 +306,39 @@ const CameraView = ({ isActive, isGuest, onWorkoutFinish }) => {
 // --- MAIN APP COMPONENT ---
 export default function App({ onGoToLanding, onGoToLogin, isGuest }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [showAchievements, setShowAchievements] = useState(false);
   const [currentView, setCurrentView] = useState('list'); 
   const [muscleFilter, setMuscleFilter] = useState('Wszystkie');
   const [selectedEx, setSelectedEx] = useState({ name: "Przysiady Klasyczne", id: "001", category: "Nogi" });
   const [active, setActive] = useState(false);
   const [lastWorkout, setLastWorkout] = useState(null);
   const [avatarUrl, setAvatarUrl] = useState(localStorage.getItem('userAvatar') || null);
+  
+  // NOWY STAN DLA DEEP LINKINGU OSIĄGNIĘĆ
+  const [selectedAchievementId, setSelectedAchievementId] = useState(null);
 
   const handleWorkoutFinish = (reps, videoURL, debugInfo) => {
     setLastWorkout({ name: selectedEx.name, category: selectedEx.category, reps, videoUrl: videoURL, debug: debugInfo, score: debugInfo.score, date: new Date().toLocaleTimeString() });
     setCurrentView('feedback'); setActive(false);
   };
 
+  // FUNKCJA OBSŁUGUJĄCA KLIKNIĘCIE W OSIĄGNIĘCIE
+  const handleAchievementClick = (id) => {
+    setSelectedAchievementId(id);
+    setCurrentView('profile');
+    setShowAchievements(false); // Zamyka panel boczny
+    
+    // Czyścimy ID po chwili, aby przy ręcznym wejściu na profil nie przewijało nas ponownie
+    setTimeout(() => setSelectedAchievementId(null), 1000);
+  };
+
   return (
     <div className="h-[100dvh] w-screen bg-slate-950 text-blue-100 flex overflow-hidden relative font-sans">
+      
+      {/* Overlay dla Menu Głównego (Mobile) */}
       {isSidebarOpen && <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] md:hidden" onClick={() => setIsSidebarOpen(false)} />}
       
+      {/* LEWY SIDEBAR - NAWIGACJA */}
       <aside className={`bg-slate-900 border-r border-slate-800 flex flex-col transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] z-[110] 
         ${isSidebarOpen ? 'w-80 translate-x-0' : 'w-24 -translate-x-full md:translate-x-0'} 
         fixed md:relative h-full shadow-2xl`}>
@@ -367,6 +388,13 @@ export default function App({ onGoToLanding, onGoToLogin, isGuest }) {
               {currentView === 'list' ? 'Eksploruj Bibliotekę' : currentView === 'profile' ? 'Twój Profil' : 'Twoja Sesja AI'}
             </p>
           </div>
+          {currentView !== 'profile' && (
+          <button 
+            onClick={() => setShowAchievements(true)}
+            className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl hover:border-amber-500 transition-all group shadow-lg"
+          >
+            <Medal size={22} className="text-amber-500 group-hover:scale-110 transition-transform" />
+          </button>)}
           <div className="h-10 w-10 bg-slate-800 rounded-full border border-slate-700 flex items-center justify-center shrink-0">
             <Settings size={20} className="text-slate-400 cursor-pointer hover:text-sky-400 transition-colors" onClick={() => setCurrentView('profile')} />
           </div>
@@ -384,6 +412,7 @@ export default function App({ onGoToLanding, onGoToLogin, isGuest }) {
                 setAvatarUrl(newUrl);
                 localStorage.setItem('userAvatar', newUrl);
               }} 
+              initialAchievementId={selectedAchievementId}
             />
           ) : (
             <div className="h-full flex flex-col xl:grid xl:grid-cols-2 gap-6">
@@ -414,7 +443,7 @@ export default function App({ onGoToLanding, onGoToLogin, isGuest }) {
                 <div className="bg-slate-900/80 backdrop-blur-md h-[72px] rounded-2xl border border-slate-800 flex items-center justify-between px-6 shadow-xl">
                   <div className="flex items-center gap-3">
                     <div className={`h-3 w-3 rounded-full ${active ? 'bg-green-500 animate-pulse shadow-[0_0_15px_#22c55e]' : 'bg-red-500'}`} />
-                    <p className="hidden xs:block text-[10px] text-slate-400 font-black tracking-widest uppercase">{active ? 'System Active' : 'System Standby'}</p>
+                    <p className="hidden xs:block text-[10px] text-slate-400 font-black uppercase tracking-widest uppercase">{active ? 'System Active' : 'System Standby'}</p>
                   </div>
                   {currentView === 'model' && (
                     <button onClick={() => setActive(!active)} className={`flex items-center gap-3 px-10 h-[48px] rounded-2xl border transition-all duration-300 font-black uppercase tracking-widest text-[10px] ${active ? 'bg-red-500 border-red-400 text-white shadow-[0_0_20px_rgba(239,68,68,0.3)]' : 'bg-sky-500 border-sky-400 text-slate-950 shadow-[0_0_20px_rgba(14,165,233,0.4)]'}`}>
@@ -428,6 +457,59 @@ export default function App({ onGoToLanding, onGoToLogin, isGuest }) {
           )}
         </div>
       </main>
+
+      {/* --- PRAWY SIDEBAR: OSIĄGNIĘCIA --- */}
+      {showAchievements && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] transition-opacity duration-300"
+          onClick={() => setShowAchievements(false)}
+        />
+      )}
+
+      <div className={`fixed top-0 right-0 h-full w-80 max-w-[90%] bg-slate-900 border-l border-slate-800 z-[201] shadow-2xl transform transition-transform duration-300 ease-out p-6 flex flex-col ${showAchievements ? 'translate-x-0' : 'translate-x-full'}`}>
+        <div className="flex justify-between items-center mb-8">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-amber-500/10 rounded-lg">
+              <Award className="text-amber-500" size={24} />
+            </div>
+            <h2 className="text-xl font-black italic uppercase text-white tracking-tighter">Osiągnięcia</h2>
+          </div>
+          <button 
+            onClick={() => setShowAchievements(false)}
+            className="p-2 hover:bg-slate-800 rounded-full transition-colors text-slate-400 hover:text-white"
+          >
+            <X size={24} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto pr-2 space-y-4 scrollbar-hide">
+          {ACTIVITIES && ACTIVITIES.map(a => (
+            <div 
+              key={a.id} 
+              onClick={() => handleAchievementClick(a.id)}
+              className="group bg-black/40 border border-slate-800 p-4 rounded-2xl flex items-center gap-4 hover:border-amber-500/50 transition-all cursor-pointer active:scale-95"
+            >
+              <div className="relative">
+                <div className="bg-slate-900 p-2.5 rounded-xl border border-slate-800 group-hover:bg-amber-500/10 transition-colors">
+                   <Trophy size={18} className="text-amber-500" />
+                </div>
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-black" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-[11px] font-black uppercase italic text-white leading-none mb-1 group-hover:text-amber-500 transition-colors">{a.achievement || 'Mistrz Formy'}</h4>
+                <div className="flex items-center gap-1.5">
+                  <Target size={10} className="text-slate-600" />
+                  <p className="text-[9px] text-slate-500 uppercase font-bold tracking-tighter">Za: {a.name}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 pt-6 border-t border-slate-800 text-center text-slate-500 text-[10px] uppercase font-bold tracking-widest">
+           System FormCheck AI v2.0
+        </div>
+      </div>
     </div>
   );
 }

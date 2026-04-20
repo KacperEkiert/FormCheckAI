@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect } from 'react'
+import React, { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { useGLTF, PresentationControls, Stage, Html } from '@react-three/drei'
 

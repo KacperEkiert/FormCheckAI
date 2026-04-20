@@ -12,7 +12,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 
-const FeedbackPage = ({ workoutData, onBack, onSelectNewExercise, isGuest, onLogin }) => {
+const FeedbackPage = ({ workoutData, onBack, isGuest, onLogin }) => {
   const f = workoutData?.debug?.faults;
   const score = workoutData?.score || 0;
 
