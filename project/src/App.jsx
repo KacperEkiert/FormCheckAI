@@ -1,17 +1,15 @@
-import React, { useMemo, useRef, useEffect, useState } from 'react';
-import * as cocoSsd from "@tensorflow-models/coco-ssd";
+import React, { useRef, useEffect, useState } from 'react';
 import "@tensorflow/tfjs-backend-webgl";
-import * as tf from "@tensorflow/tfjs-core";
 import { 
   BrainCircuit, Footprints, LayoutGrid, Activity as ActivityIcon, 
   Play, Square, LogOut, Menu, ChevronLeft, Settings, User, History, 
-  CheckCircle2, AlertCircle, Loader2
+  CheckCircle2, Clock, Timer
 } from 'lucide-react';
 
 import GymActivitiesList from './GymActivitiesList';
 import InteractiveModel from './InteractiveModel';
 import FeedbackPage from './FeedbackPage';
-import UserProfile from './UserProfile'; // Dodano import profilu
+import UserProfile from './UserProfile';
 import { supabase } from './supabaseClient';
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
@@ -24,8 +22,8 @@ const angleDeg = (a, b, c) => {
   return (Math.acos(clamp(dot / (magAB * magCB), -1, 1)) * 180) / Math.PI;
 };
 
-//kamerkawidoczek
-const CameraView = ({ isActive, selectedExercise, onWorkoutFinish }) => {
+// --- CAMERA VIEW COMPONENT ---
+const CameraView = ({ isActive, isGuest, onWorkoutFinish }) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const poseRef = useRef(null);
@@ -39,13 +37,13 @@ const CameraView = ({ isActive, selectedExercise, onWorkoutFinish }) => {
   const [setupHint, setSetupHint] = useState("Inicjalizacja...");
   const [calibProgress, setCalibProgress] = useState(0);
   const [isHeelLifted, setIsHeelLifted] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(isGuest ? 60 : 300);
+  const [countdown, setCountdown] = useState(isGuest ? 10 : 5);
   
-  // Voice Feedback logic
   const lastSpokenRef = useRef({});
   
   const getBestPolishVoice = () => {
     const voices = window.speechSynthesis.getVoices();
-    // Preferujemy głosy Google Online lub Microsoft Natural, które brzmią najlepiej
     return voices.find(v => v.lang === 'pl-PL' && v.name.includes('Google')) || 
            voices.find(v => v.lang === 'pl-PL' && v.name.includes('Natural')) ||
            voices.find(v => v.lang === 'pl-PL') ||
@@ -60,20 +58,15 @@ const CameraView = ({ isActive, selectedExercise, onWorkoutFinish }) => {
 
     const utterance = new SpeechSynthesisUtterance(text);
     const bestVoice = getBestPolishVoice();
-    
-    if (bestVoice) {
-      utterance.voice = bestVoice;
-    }
-
+    if (bestVoice) utterance.voice = bestVoice;
     utterance.lang = 'pl-PL';
-    utterance.rate = 1.0; // Standardowe tempo dla lepszej czytelności
-    utterance.pitch = 0.95; // Lekko obniżony ton brzmi bardziej profesjonalnie (trener)
+    utterance.rate = 1.0;
+    utterance.pitch = 0.95;
     
     lastSpokenRef.current[type] = now;
     window.speechSynthesis.speak(utterance);
   };
 
-  // Inicjalizacja głosów (niektóre przeglądarki ładują je asynchronicznie)
   useEffect(() => {
     if (window.speechSynthesis) {
       window.speechSynthesis.getVoices();
@@ -91,207 +84,230 @@ const CameraView = ({ isActive, selectedExercise, onWorkoutFinish }) => {
 
   useEffect(() => { stageRef.current = workoutStage; }, [workoutStage]);
 
+  // Start / Stop Workout Logic
   useEffect(() => {
     if (isActive) {
+      statsRef.current = { kneeAngles: [], backAngles: [], shallowReps: 0, poorBackFrames: 0, heelLiftFrames: 0, totalFrames: 0 };
       setWorkoutStage('calibrating');
       setRepCount(0); repCountRef.current = 0;
       calibrationFrames.current = 0; setCalibProgress(0);
+      setTimeLeft(isGuest ? 60 : 300);
+      setCountdown(isGuest ? 10 : 5);
     } else {
-      if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
+      if (mediaRecorderRef.current?.state === "recording") {
+        try { mediaRecorderRef.current.stop(); } catch(e) { console.error(e); }
+      }
       setWorkoutStage('idle');
     }
-  }, [isActive]);
+  }, [isActive, isGuest]);
 
+  // Countdown & Timer Effects
   useEffect(() => {
+    let timer;
     if (workoutStage === 'starting') {
-      speak("Zaczynamy trening! Skup się na technice i daj z siebie wszystko.", "start", 1000);
-      const timer = setTimeout(() => {
+      if (countdown > 0) {
+        timer = setInterval(() => setCountdown(c => c - 1), 1000);
+        if (countdown <= 3) speak(countdown.toString(), "countdown", 900);
+      } else {
         setWorkoutStage('active');
+        speak("Zaczynamy!", "start", 1000);
         if (videoRef.current?.srcObject) {
           chunksRef.current = [];
-          mediaRecorderRef.current = new MediaRecorder(videoRef.current.srcObject, { mimeType: 'video/webm' });
+          const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+          mediaRecorderRef.current = new MediaRecorder(videoRef.current.srcObject, { mimeType });
           mediaRecorderRef.current.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
           mediaRecorderRef.current.onstop = () => {
             const blob = new Blob(chunksRef.current, { type: 'video/webm' });
             const url = URL.createObjectURL(blob);
             const s = statsRef.current;
+            const total = s.totalFrames || 1;
             let score = 100;
-            const hPen = (s.heelLiftFrames / s.totalFrames) * 150;
-            const bPen = (s.poorBackFrames / s.totalFrames) * 200;
+            const hPen = (s.heelLiftFrames / total) * 150;
+            const bPen = (s.poorBackFrames / total) * 200;
             const dPen = (s.shallowReps / (repCountRef.current || 1)) * 30;
             score = Math.max(0, Math.round(score - hPen - bPen - dPen));
-            
-            speak(`Świetna robota! Ukończyłeś trening. Wykonałeś ${repCountRef.current} powtórzeń. Sprawdź swój raport.`, "finish", 1000);
-
+            if (isNaN(score)) score = 0;
+            speak(`Koniec treningu. Wykonałeś ${repCountRef.current} powtórzeń.`, "finish", 1000);
             onWorkoutFinish(repCountRef.current, url, {
-              knee: { min: Math.min(...s.kneeAngles) || 0, avg: Math.round(s.kneeAngles.reduce((a,b)=>a+b,0)/s.kneeAngles.length) || 0 },
-              back: { max: Math.max(...s.backAngles) || 0, avg: Math.round(s.backAngles.reduce((a,b)=>a+b,0)/s.backAngles.length) || 0 },
-              faults: { heelLiftPct: Math.round((s.heelLiftFrames / s.totalFrames) * 100) || 0, poorBackPct: Math.round((s.poorBackFrames / s.totalFrames) * 100) || 0, shallowReps: s.shallowReps },
-              score: score, samples: s.totalFrames
+              knee: { min: s.kneeAngles.length ? Math.min(...s.kneeAngles) : 0, avg: s.kneeAngles.length ? Math.round(s.kneeAngles.reduce((a,b)=>a+b,0)/s.kneeAngles.length) : 0 },
+              back: { max: s.backAngles.length ? Math.max(...s.backAngles) : 0, avg: s.backAngles.length ? Math.round(s.backAngles.reduce((a,b)=>a+b,0)/s.backAngles.length) : 0 },
+              faults: { heelLiftPct: Math.round((s.heelLiftFrames / total) * 100) || 0, poorBackPct: Math.round((s.poorBackFrames / total) * 100) || 0, shallowReps: s.shallowReps },
+              score: score, samples: total
             });
           };
           mediaRecorderRef.current.start();
         }
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [workoutStage]);
-
-  const onResults = (results) => {
-    if (!canvasRef.current || !results.image) return;
-    const ctx = canvasRef.current.getContext("2d");
-    const { width, height } = results.image;
-    if (canvasRef.current.width !== width) { canvasRef.current.width = width; canvasRef.current.height = height; }
-    ctx.save(); ctx.clearRect(0, 0, width, height); ctx.drawImage(results.image, 0, 0, width, height); ctx.restore();
-    
-    if (results.poseLandmarks) {
-      const lm = results.poseLandmarks;
-      const aspectRatio = width / height;
-      const stage = stageRef.current;
-      const required = [11, 12, 23, 24]; 
-      const coreV = required.every(i => (lm[i]?.visibility || 0) > 0.5);
-      const anklesV = (lm[27]?.visibility || 0) > 0.2 || (lm[28]?.visibility || 0) > 0.2;
-      const isSide = Math.abs(lm[11].x - lm[12].x) < 0.22; 
-
-      if (stage === 'calibrating') {
-        if (!coreV) setSetupHint("Pokaż sylwetkę");
-        else if (!anklesV) setSetupHint("AI nie widzi Twoich stóp");
-        else if (!isSide) setSetupHint("Stań bokiem");
-        else {
-          setSetupHint("STÓJ NIERUCHOMO...");
-          calibrationFrames.current++;
-          setCalibProgress(Math.min(100, (calibrationFrames.current / 30) * 100));
-          if (calibrationFrames.current > 30) setWorkoutStage('starting');
-        }
       }
-
-      const leftV = (lm[11].visibility || 0) + (lm[23].visibility || 0) + (lm[25].visibility || 0);
-      const rightV = (lm[12].visibility || 0) + (lm[24].visibility || 0) + (lm[26].visibility || 0);
-      const sIdx = leftV > rightV ? { s: 11, h: 23, k: 25, a: 27, heel: 29, toe: 31 } : { s: 12, h: 24, k: 26, a: 28, heel: 30, toe: 32 };
-      const kneeA = Math.round(angleDeg({ x: lm[sIdx.h].x * aspectRatio, y: lm[sIdx.h].y }, { x: lm[sIdx.k].x * aspectRatio, y: lm[sIdx.k].y }, { x: lm[sIdx.a].x * aspectRatio, y: lm[sIdx.a].y }));
-      const backT = Math.round(Math.abs(Math.atan2((lm[sIdx.s].x - lm[sIdx.h].x) * aspectRatio, lm[sIdx.h].y - lm[sIdx.s].y) * (180 / Math.PI)));
-      const heelDiff = lm[sIdx.toe].y - lm[sIdx.heel].y;
-      const rawLifted = heelDiff > 0.07 && (lm[sIdx.heel].visibility || 0) > 0.6;
-      if (rawLifted) heelLiftCounter.current = Math.min(10, heelLiftCounter.current + 1); else heelLiftCounter.current = Math.max(0, heelLiftCounter.current - 1);
-      const lifted = heelLiftCounter.current > 5; setIsHeelLifted(lifted);
-
-      if (stage === 'active') {
-        statsRef.current.totalFrames++; statsRef.current.kneeAngles.push(kneeA); statsRef.current.backAngles.push(backT);
-        
-        if (backT > 45) {
-          statsRef.current.poorBackFrames++;
-          speak("Wyprostuj plecy i wypchnij klatkę do przodu. Dbaj o swój kręgosłup.", "back_error", 6000);
-        }
-        if (lifted) {
-          statsRef.current.heelLiftFrames++;
-          speak("Przyklej pięty do ziemi. To klucz do stabilności i bezpieczeństwa.", "heel_error", 5000);
-        }
-
-        const isDeep = kneeA < 105;
-        let bColor = "#22c55e"; let bStat = "STABLE";
-        if (backT >= 35 && backT <= 45) { bColor = "#f59e0b"; bStat = "WARNING"; } else if (backT > 45) { bColor = "#ef4444"; bStat = "POOR"; }
-        ctx.font = "bold 14px monospace"; ctx.shadowBlur = 4; ctx.shadowColor = "black";
-        ctx.fillStyle = isDeep ? "#22c55e" : "#f59e0b"; ctx.fillText(`${kneeA}° DEPTH`, lm[sIdx.k].x * width + 15, lm[sIdx.k].y * height);
-        ctx.fillStyle = bColor; ctx.fillText(`${backT}° BACK`, lm[sIdx.h].x * width + 15, lm[sIdx.h].y * height);
-        if (lifted) { ctx.beginPath(); ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 5; ctx.moveTo(lm[sIdx.heel].x * width - 20, lm[sIdx.heel].y * height + 5); ctx.lineTo(lm[sIdx.heel].x * width + 20, lm[sIdx.heel].y * height + 5); ctx.stroke(); }
-        if (kneeA < 110 && phase !== "down") setPhase("down");
-        if (kneeA > 160 && phase === "down") { 
-          const minKnee = Math.min(...statsRef.current.kneeAngles.slice(-30));
-          if (minKnee > 105) {
-            statsRef.current.shallowReps++; 
-            speak("Zejdź nieco niżej przy kolejnym powtórzeniu. Pełny zakres ruchu daje najlepsze efekty.", "depth_error", 5000);
-          } else {
-            const nextCount = repCountRef.current + 1;
-            if (nextCount % 5 === 0) {
-              speak(`Świetnie! Masz już ${nextCount} powtórzeń. Tak trzymaj!`, "milestone", 3000);
-            }
-          }
-          setRepCount(prev => { repCountRef.current = prev + 1; return prev + 1; }); 
-          setPhase("up"); 
-        }
-        ctx.save(); ctx.fillStyle = "rgba(2, 6, 23, 0.9)"; ctx.beginPath(); ctx.roundRect(10, 10, 220, 130, 15); ctx.fill();
-        ctx.fillStyle = "#38bdf8"; ctx.font = "bold 18px monospace"; ctx.fillText(`SQUATS: ${repCountRef.current}`, 25, 35);
-        ctx.font = "11px monospace"; ctx.fillStyle = isDeep ? "#22c55e" : "#f59e0b"; ctx.fillText(`DEPTH: ${isDeep ? '✓ PERFECT' : '⚠ GO LOWER'}`, 25, 60);
-        ctx.fillStyle = bColor; ctx.fillText(`BACK: ${bStat}`, 25, 80);
-        ctx.fillStyle = lifted ? "#ef4444" : "#22c55e"; ctx.fillText(`FEET: ${lifted ? '⚠ HEELS UP!' : '✓ GROUNDED'}`, 25, 100); ctx.restore();
+    } else if (workoutStage === 'active') {
+      if (timeLeft > 0) {
+        timer = setInterval(() => setTimeLeft(t => t - 1), 1000);
+        if (timeLeft === 10) speak("Ostatnie 10 sekund!", "time_warning", 1000);
+      } else {
+        if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
+        setWorkoutStage('idle');
       }
-      if (window.drawConnectors) window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: stage === 'active' ? "rgba(56, 189, 248, 0.5)" : "rgba(255, 255, 255, 0.1)", lineWidth: 2 });
     }
-  };
-
-  const onResultsRef = useRef(onResults);
-  useEffect(() => { onResultsRef.current = onResults; });
+    return () => clearInterval(timer);
+  }, [workoutStage, countdown, timeLeft, onWorkoutFinish]);
 
   useEffect(() => {
     if (!videoRef.current) return;
     
-    const init = async () => {
-      try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          setSetupHint("BŁĄD: Wymagane połączenie HTTPS do obsługi kamery.");
-          return;
+    const onResults = (results) => {
+      if (!canvasRef.current || !results.image) return;
+      const ctx = canvasRef.current.getContext("2d");
+      const { width, height } = results.image;
+      if (canvasRef.current.width !== width) { canvasRef.current.width = width; canvasRef.current.height = height; }
+      ctx.save(); ctx.clearRect(0, 0, width, height); ctx.drawImage(results.image, 0, 0, width, height); ctx.restore();
+      
+      if (results.poseLandmarks) {
+        const lm = results.poseLandmarks;
+        const aspectRatio = width / height;
+        const stage = stageRef.current;
+        const required = [11, 12, 23, 24]; 
+        const coreV = required.every(i => (lm[i]?.visibility || 0) > 0.5);
+        const anklesV = (lm[27]?.visibility || 0) > 0.2 || (lm[28]?.visibility || 0) > 0.2;
+        const isSide = Math.abs(lm[11].x - lm[12].x) < 0.22; 
+
+        if (stage === 'calibrating') {
+          if (!coreV) setSetupHint("Pokaż sylwetkę");
+          else if (!anklesV) setSetupHint("AI nie widzi stóp");
+          else if (!isSide) setSetupHint("Stań bokiem");
+          else {
+            setSetupHint("STÓJ NIERUCHOMO...");
+            calibrationFrames.current++;
+            setCalibProgress(Math.min(100, (calibrationFrames.current / 30) * 100));
+            if (calibrationFrames.current > 30) setWorkoutStage('starting');
+          }
         }
 
+        const leftV = (lm[11].visibility || 0) + (lm[23].visibility || 0) + (lm[25].visibility || 0);
+        const rightV = (lm[12].visibility || 0) + (lm[24].visibility || 0) + (lm[26].visibility || 0);
+        const sIdx = leftV > rightV ? { s: 11, h: 23, k: 25, a: 27, heel: 29, toe: 31 } : { s: 12, h: 24, k: 26, a: 28, heel: 30, toe: 32 };
+        const kneeA = Math.round(angleDeg({ x: lm[sIdx.h].x * aspectRatio, y: lm[sIdx.h].y }, { x: lm[sIdx.k].x * aspectRatio, y: lm[sIdx.k].y }, { x: lm[sIdx.a].x * aspectRatio, y: lm[sIdx.a].y }));
+        const backT = Math.round(Math.abs(Math.atan2((lm[sIdx.s].x - lm[sIdx.h].x) * aspectRatio, lm[sIdx.h].y - lm[sIdx.s].y) * (180 / Math.PI)));
+        const heelDiff = lm[sIdx.toe].y - lm[sIdx.heel].y;
+        const rawLifted = heelDiff > 0.07 && (lm[sIdx.heel].visibility || 0) > 0.6;
+        if (rawLifted) heelLiftCounter.current = Math.min(10, heelLiftCounter.current + 1); else heelLiftCounter.current = Math.max(0, heelLiftCounter.current - 1);
+        const lifted = heelLiftCounter.current > 5; setIsHeelLifted(lifted);
+
+        if (stage === 'active') {
+          statsRef.current.totalFrames++; statsRef.current.kneeAngles.push(kneeA); statsRef.current.backAngles.push(backT);
+          if (backT > 45) { statsRef.current.poorBackFrames++; speak("Wyprostuj plecy", "back_error", 6000); }
+          if (lifted) { statsRef.current.heelLiftFrames++; speak("Przyklej pięty", "heel_error", 5000); }
+
+          const isDeep = kneeA < 105;
+          let bColor = "#22c55e"; let bStat = "STABLE";
+          if (backT >= 35 && backT <= 45) { bColor = "#f59e0b"; bStat = "WARNING"; } else if (backT > 45) { bColor = "#ef4444"; bStat = "POOR"; }
+          ctx.font = "bold 14px monospace"; ctx.shadowBlur = 4; ctx.shadowColor = "black";
+          ctx.fillStyle = isDeep ? "#22c55e" : "#f59e0b"; ctx.fillText(`${kneeA}° DEPTH`, lm[sIdx.k].x * width + 15, lm[sIdx.k].y * height);
+          ctx.fillStyle = bColor; ctx.fillText(`${backT}° BACK`, lm[sIdx.h].x * width + 15, lm[sIdx.h].y * height);
+          if (lifted) { ctx.beginPath(); ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 5; ctx.moveTo(lm[sIdx.heel].x * width - 20, lm[sIdx.heel].y * height + 5); ctx.lineTo(lm[sIdx.heel].x * width + 20, lm[sIdx.heel].y * height + 5); ctx.stroke(); }
+          if (kneeA < 110 && phase !== "down") setPhase("down");
+          if (kneeA > 160 && phase === "down") { 
+            const minKnee = Math.min(...statsRef.current.kneeAngles.slice(-30));
+            if (minKnee > 105) { statsRef.current.shallowReps++; speak("Zejdź niżej", "depth_error", 5000); }
+            setRepCount(prev => { repCountRef.current = prev + 1; return prev + 1; }); setPhase("up"); 
+          }
+          ctx.save(); ctx.fillStyle = "rgba(2, 6, 23, 0.9)"; ctx.beginPath(); ctx.roundRect(10, 10, 220, 130, 15); ctx.fill();
+          ctx.fillStyle = "#38bdf8"; ctx.font = "bold 18px monospace"; ctx.fillText(`SQUATS: ${repCountRef.current}`, 25, 35);
+          ctx.font = "11px monospace"; ctx.fillStyle = isDeep ? "#22c55e" : "#f59e0b"; ctx.fillText(`DEPTH: ${isDeep ? '✓ PERFECT' : '⚠ GO LOWER'}`, 25, 60);
+          ctx.fillStyle = bColor; ctx.fillText(`BACK: ${bStat}`, 25, 80);
+          ctx.fillStyle = lifted ? "#ef4444" : "#22c55e"; ctx.fillText(`FEET: ${lifted ? '⚠ HEELS UP!' : '✓ GROUNDED'}`, 25, 100); ctx.restore();
+        }
+        if (window.drawConnectors) window.drawConnectors(ctx, lm, window.POSE_CONNECTIONS, { color: stage === 'active' ? "rgba(56, 189, 248, 0.5)" : "rgba(255, 255, 255, 0.1)", lineWidth: 2 });
+      }
+    };
+
+    const init = async () => {
+      try {
         poseRef.current = new window.Pose({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}` });
         poseRef.current.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-        poseRef.current.onResults((res) => onResultsRef.current(res));
-        
+        poseRef.current.onResults(onResults);
         cameraRef.current = new window.Camera(videoRef.current, { 
           onFrame: async () => { if (videoRef.current) await poseRef.current.send({ image: videoRef.current }); }, 
           width: 1280, height: 720 
         });
-        
         await cameraRef.current.start();
-      } catch (err) {
-        console.error("Camera init failed:", err);
-        setSetupHint("Nie udało się uruchomić kamery.");
-      }
+      } catch (err) { console.error(err); setSetupHint("Błąd kamery"); }
     };
-
     init();
     return () => { cameraRef.current?.stop(); poseRef.current?.close(); };
-  }, []);
+  }, [phase]);
+
+  const formatTime = (s) => `${Math.floor(s/60)}:${(s%60).toString().padStart(2, '0')}`;
 
   return (
     <div className="relative w-full h-full bg-slate-950 rounded-[2rem] border border-slate-800 overflow-hidden shadow-2xl">
       <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover opacity-0" playsInline muted />
       <canvas ref={canvasRef} className="w-full h-full object-cover scale-x-[-1]" />
+      
+      {/* UI OVERLAYS */}
       {workoutStage === 'active' && (
-        <div className="absolute top-8 right-8 flex flex-col items-end pointer-events-none z-50">
-          <div className="bg-slate-900/80 border-2 border-sky-500/50 px-8 py-4 rounded-[2.5rem] backdrop-blur-xl shadow-[0_0_40px_rgba(14,165,233,0.3)] flex flex-col items-center">
-            <span className="text-[10px] font-black uppercase tracking-[0.4em] text-sky-500 mb-1">Repetitions</span>
-            <div key={repCount} className="text-7xl font-black italic text-white animate-in zoom-in duration-300">{repCount}</div>
-            <div className={`mt-2 px-4 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${phase === 'down' ? 'bg-sky-500 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>{phase === 'down' ? '↓↓ DÓŁ ↓↓' : '↑↑ GÓRA ↑↑'}</div>
+        <>
+          <div className="absolute top-8 right-8 flex flex-col items-end gap-4 z-50">
+            {/* Rep Counter */}
+            <div className="bg-slate-900/80 border-2 border-sky-500/50 px-8 py-4 rounded-[2.5rem] backdrop-blur-xl shadow-2xl flex flex-col items-center min-w-[140px]">
+              <span className="text-[10px] font-black uppercase tracking-[0.4em] text-sky-500 mb-1 italic">Reps</span>
+              <div key={repCount} className="text-6xl font-black italic text-white animate-in zoom-in duration-300">{repCount}</div>
+            </div>
+            {/* Session Timer */}
+            <div className="bg-slate-900/80 border border-slate-800 px-6 py-3 rounded-2xl backdrop-blur-xl flex items-center gap-3">
+              <Clock size={16} className="text-sky-500" />
+              <span className="text-xl font-black font-mono text-white tracking-widest">{formatTime(timeLeft)}</span>
+            </div>
           </div>
-        </div>
+          {isGuest && (
+            <div className="absolute top-8 left-8 z-50">
+              <div className="bg-amber-500 text-slate-950 px-4 py-1.5 rounded-full font-black text-[10px] uppercase tracking-widest shadow-lg flex items-center gap-2">
+                <Timer size={12} /> Tryb Demo
+              </div>
+            </div>
+          )}
+          <div className="absolute bottom-10 left-1/2 -translate-x-1/2">
+             <div className={`px-8 py-3 rounded-full font-black uppercase tracking-[0.3em] text-[10px] shadow-xl ${phase === 'down' ? 'bg-sky-500 text-slate-950 animate-pulse' : 'bg-slate-900/90 text-slate-400'}`}>
+                {phase === 'down' ? '↓↓ DÓŁ ↓↓' : '↑↑ GÓRA ↑↑'}
+             </div>
+          </div>
+        </>
       )}
+
       <div className="absolute inset-0 pointer-events-none z-50 flex items-center justify-center p-6 text-center">
         {workoutStage === 'calibrating' && (
           <div className="bg-slate-900/95 border-2 border-sky-500/50 backdrop-blur-xl p-8 rounded-[2.5rem] shadow-[0_0_80px_rgba(0,0,0,0.8)] flex flex-col items-center gap-6 animate-in fade-in zoom-in">
             <h3 className="text-2xl font-black uppercase tracking-widest text-white">{setupHint}</h3>
             {calibProgress > 0 && <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden"><div className="bg-green-500 h-full transition-all duration-100" style={{ width: `${calibProgress}%` }} /></div>}
-            <div className="w-48 h-72 border-2 border-dashed border-sky-500/30 rounded-3xl" />
+            <div className="w-48 h-72 border-2 border-dashed border-sky-500/30 rounded-3xl relative">
+               <div className="absolute inset-x-4 top-1/4 bottom-1/4 border-y border-sky-500/20 animate-pulse" />
+            </div>
+            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest italic">Ustaw się w odległości 2-3 metrów</p>
           </div>
         )}
         {workoutStage === 'starting' && (
-          <div className="animate-in zoom-in fade-in"><div className="bg-green-500 text-black font-black text-8xl px-20 py-10 rounded-full shadow-[0_0_100px_#22c55e] italic animate-bounce">ZACZYNAJ!</div></div>
+          <div className="flex flex-col items-center gap-8 animate-in zoom-in fade-in">
+            <div className="text-sky-500 font-black text-[20px] uppercase tracking-[0.5em] italic">Przygotuj się</div>
+            <div className="bg-sky-500 text-slate-950 font-black text-9xl w-48 h-48 rounded-full shadow-[0_0_100px_rgba(14,165,233,0.6)] italic flex items-center justify-center animate-bounce">
+              {countdown}
+            </div>
+          </div>
         )}
         {workoutStage === 'active' && isHeelLifted && (
-          <div className="absolute bottom-32 bg-red-600 text-white font-black px-10 py-4 rounded-2xl shadow-2xl animate-bounce border-4 border-white">PRZYKLEJ PIĘTY DO ZIEMI!</div>
+          <div className="absolute bottom-32 bg-red-600 text-white font-black px-10 py-4 rounded-2xl shadow-2xl animate-bounce border-4 border-white uppercase tracking-tighter">PRZYKLEJ PIĘTY DO ZIEMI!</div>
         )}
       </div>
     </div>
   );
 };
 
-export default function App() {
+// --- MAIN APP COMPONENT ---
+export default function App({ onGoToLanding, onGoToLogin, isGuest }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [currentView, setCurrentView] = useState('list'); 
   const [muscleFilter, setMuscleFilter] = useState('Wszystkie');
   const [selectedEx, setSelectedEx] = useState({ name: "Przysiady Klasyczne", id: "001", category: "Nogi" });
   const [active, setActive] = useState(false);
   const [lastWorkout, setLastWorkout] = useState(null);
-  const [avatarUrl, setAvatarUrl] = useState(localStorage.getItem('userAvatar') || null); // Dodano stan zdjęcia
+  const [avatarUrl, setAvatarUrl] = useState(localStorage.getItem('userAvatar') || null);
 
   const handleWorkoutFinish = (reps, videoURL, debugInfo) => {
     setLastWorkout({ name: selectedEx.name, category: selectedEx.category, reps, videoUrl: videoURL, debug: debugInfo, score: debugInfo.score, date: new Date().toLocaleTimeString() });
@@ -307,8 +323,8 @@ export default function App() {
         fixed md:relative h-full shadow-2xl`}>
         
         <div className="p-6 flex items-center justify-between relative">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="bg-sky-500 p-2.5 rounded-2xl shadow-[0_0_20px_rgba(14,165,233,0.4)] shrink-0">
+          <div className="flex items-center gap-3 min-w-0 cursor-pointer group/logo" onClick={onGoToLanding}>
+            <div className="bg-sky-500 p-2.5 rounded-2xl shadow-[0_0_20px_rgba(14,165,233,0.4)] shrink-0 group-hover/logo:scale-110 transition-transform">
               <BrainCircuit className="h-6 w-6 text-slate-950" />
             </div>
             <h1 className={`text-xl font-black uppercase italic tracking-tighter transition-all duration-500 ${isSidebarOpen ? 'opacity-100 max-w-[200px] ml-1' : 'opacity-0 max-w-0 overflow-hidden'}`}>
@@ -316,12 +332,7 @@ export default function App() {
             </h1>
           </div>
           
-          <button 
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className={`group p-2.5 rounded-xl border border-slate-800 bg-slate-950/50 text-slate-400 transition-all duration-300
-              hover:border-sky-500/50 hover:text-sky-400 hover:shadow-[0_0_15px_rgba(14,165,233,0.2)]
-              ${!isSidebarOpen ? 'md:flex hidden absolute -right-5 top-7 z-50 bg-slate-900 border-slate-700' : ''}`}
-          >
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className={`group p-2.5 rounded-xl border border-slate-800 bg-slate-950/50 text-slate-400 transition-all duration-300 hover:border-sky-500/50 hover:text-sky-400 hover:shadow-[0_0_15px_rgba(14,165,233,0.2)] ${!isSidebarOpen ? 'md:flex hidden absolute -right-5 top-7 z-50 bg-slate-900 border-slate-700' : ''}`}>
             <ChevronLeft size={18} className={`transition-transform duration-500 ${!isSidebarOpen ? 'rotate-180' : ''}`} />
           </button>
         </div>
@@ -331,31 +342,11 @@ export default function App() {
             { view: 'list', icon: <LayoutGrid size={22} />, label: 'Biblioteka' },
             { view: 'model', icon: <ActivityIcon size={22} />, label: 'Trening' },
             { view: 'feedback', icon: <History size={22} />, label: 'Raport', disabled: !lastWorkout },
-            { 
-              view: 'profile', 
-              icon: avatarUrl ? (
-                <img src={avatarUrl} className="w-6 h-6 rounded-full object-cover border border-sky-400" />
-              ) : (
-                <User size={22} />
-              ), 
-              label: 'Profil' 
-            } // Dodano profil do menu
+            { view: 'profile', icon: avatarUrl ? <img src={avatarUrl} alt="avatar" className="w-6 h-6 rounded-full object-cover border border-sky-400" /> : <User size={22} />, label: 'Profil' }
           ].map((item) => (
-            <button
-              key={item.view}
-              disabled={item.disabled}
-              onClick={() => { setCurrentView(item.view); if(window.innerWidth < 768) setIsSidebarOpen(false); }}
-              className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all duration-300 group
-                ${item.disabled ? 'opacity-20 cursor-not-allowed' : ''}
-                ${currentView === item.view ? 'bg-sky-500 text-slate-950 shadow-[0_0_25px_rgba(14,165,233,0.3)]' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
-            >
-              <div className={`shrink-0 transition-transform duration-300 ${currentView === item.view ? 'scale-110' : 'group-hover:scale-110'}`}>
-                {item.icon}
-              </div>
-              <span className={`font-black text-xs uppercase tracking-[0.2em] transition-all duration-500 whitespace-nowrap 
-                ${isSidebarOpen ? 'opacity-100 max-w-[150px]' : 'opacity-0 max-w-0 overflow-hidden'}`}>
-                {item.label}
-              </span>
+            <button key={item.view} disabled={item.disabled} onClick={() => { setCurrentView(item.view); if(window.innerWidth < 768) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all duration-300 group ${item.disabled ? 'opacity-20 cursor-not-allowed' : ''} ${currentView === item.view ? 'bg-sky-500 text-slate-950 shadow-[0_0_25px_rgba(14,165,233,0.3)]' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}>
+              <div className={`shrink-0 transition-transform duration-300 ${currentView === item.view ? 'scale-110' : 'group-hover:scale-110'}`}>{item.icon}</div>
+              <span className={`font-black text-xs uppercase tracking-[0.2em] transition-all duration-500 whitespace-nowrap ${isSidebarOpen ? 'opacity-100 max-w-[150px]' : 'opacity-0 max-w-0 overflow-hidden'}`}>{item.label}</span>
             </button>
           ))}
         </nav>
@@ -368,13 +359,12 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="flex-grow flex flex-col p-4 md:p-8 overflow-y-auto relative">
+      <main className="flex-grow flex flex-col p-4 md:p-8 overflow-y-auto relative text-blue-100">
         <header className="flex justify-between items-center mb-6 gap-4">
           <div className="flex items-center gap-4">
             {!isSidebarOpen && <button onClick={() => setIsSidebarOpen(true)} className="p-2 bg-slate-900 border border-slate-800 rounded-xl text-sky-400 md:hidden"><Menu size={24} /></button>}
             <p className="text-xl md:text-2xl font-black uppercase italic tracking-tight text-white">
-              {currentView === 'list' ? 'Eksploruj Bibliotekę' : 
-               currentView === 'profile' ? 'Twój Profil' : 'Twoja Sesja AI'}
+              {currentView === 'list' ? 'Eksploruj Bibliotekę' : currentView === 'profile' ? 'Twój Profil' : 'Twoja Sesja AI'}
             </p>
           </div>
           <div className="h-10 w-10 bg-slate-800 rounded-full border border-slate-700 flex items-center justify-center shrink-0">
@@ -384,10 +374,12 @@ export default function App() {
 
         <div className="flex-grow">
           {currentView === 'feedback' ? (
-            <FeedbackPage workoutData={lastWorkout} onBack={() => setCurrentView('list')} onSelectNewExercise={(ex) => { setSelectedEx(ex); setCurrentView('model'); }} />
+            <FeedbackPage workoutData={lastWorkout} isGuest={isGuest} onBack={() => setCurrentView('list')} onSelectNewExercise={(ex) => { setSelectedEx(ex); setCurrentView('model'); }} onLogin={onGoToLogin} />
           ) : currentView === 'profile' ? (
             <UserProfile 
               avatarUrl={avatarUrl} 
+              isGuest={isGuest}
+              onLogin={onGoToLogin}
               onAvatarChange={(newUrl) => {
                 setAvatarUrl(newUrl);
                 localStorage.setItem('userAvatar', newUrl);
@@ -416,7 +408,7 @@ export default function App() {
                   {currentView === 'list' ? (
                     <InteractiveModel onSelect={(c) => setMuscleFilter(c.charAt(0).toUpperCase() + c.slice(1).toLowerCase())} currentCategory={muscleFilter.toUpperCase()} />
                   ) : (
-                    <CameraView isActive={active} selectedExercise={selectedEx.name} onWorkoutFinish={handleWorkoutFinish} />
+                    <CameraView isActive={active} isGuest={isGuest} onWorkoutFinish={handleWorkoutFinish} />
                   )}
                 </div>
                 <div className="bg-slate-900/80 backdrop-blur-md h-[72px] rounded-2xl border border-slate-800 flex items-center justify-between px-6 shadow-xl">

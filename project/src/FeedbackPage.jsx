@@ -12,7 +12,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 
-const FeedbackPage = ({ workoutData, onBack, onSelectNewExercise }) => {
+const FeedbackPage = ({ workoutData, onBack, onSelectNewExercise, isGuest, onLogin }) => {
   const f = workoutData?.debug?.faults;
   const score = workoutData?.score || 0;
 
@@ -48,7 +48,7 @@ const FeedbackPage = ({ workoutData, onBack, onSelectNewExercise }) => {
     };
     if (score > 70) return {
       title: "Poziom: SOLID",
-      text: "Bardzo dobra baza. Zwróć uwagę na detale U+002d uciekające plecy lub lekko uniesione pięty w ostatniej fazie ruchu. Kontroluj tempo przy schodzeniu w dół.",
+      text: "Bardzo dobra baza. Zwróć uwagę na detale – uciekające plecy lub lekko uniesione pięty w ostatniej fazie ruchu. Kontroluj tempo przy schodzeniu w dół.",
       icon: <CheckCircle2 className="text-green-500" />
     };
     if (score > 40) return {
@@ -143,11 +143,12 @@ const FeedbackPage = ({ workoutData, onBack, onSelectNewExercise }) => {
         </div>
 
         {/* WNIOSKI TRENERA AI */}
-        <div className="bg-slate-900/40 rounded-[2.5rem] border border-slate-800 p-8 shadow-xl flex flex-col">
+        <div className="bg-slate-900/40 rounded-[2.5rem] border border-slate-800 p-8 shadow-xl flex flex-col relative overflow-hidden">
           <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 mb-8 flex items-center gap-2">
             <Zap size={14} className="text-sky-500" /> Wnioski Trenera AI
           </h3>
-          <div className="flex-grow flex flex-col justify-center">
+          
+          <div className={`flex-grow flex flex-col justify-center transition-all duration-700 ${isGuest ? 'blur-md grayscale opacity-30 select-none' : ''}`}>
             <div className="flex items-center gap-4 mb-6">
               <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800">
                 {coach.icon}
@@ -158,8 +159,24 @@ const FeedbackPage = ({ workoutData, onBack, onSelectNewExercise }) => {
               "{coach.text}"
             </p>
           </div>
+
+          {isGuest && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 text-center bg-slate-950/40 backdrop-blur-sm">
+              <div className="bg-sky-500 p-3 rounded-2xl mb-4 shadow-[0_0_20px_rgba(14,165,233,0.4)]">
+                <ShieldAlert className="text-slate-950" size={24} />
+              </div>
+              <h4 className="text-lg font-black uppercase italic text-white mb-2 leading-tight">Analiza Zablokowana</h4>
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-6 max-w-[200px]">Zaloguj się, aby odblokować pełne wnioski AI i zapisać raport.</p>
+              <button 
+                onClick={onLogin}
+                className="bg-sky-500 text-slate-950 px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-sky-400 transition-all active:scale-95 shadow-lg"
+              >
+                Zaloguj się teraz
+              </button>
+            </div>
+          )}
           
-          <div className="mt-8 pt-8 border-t border-slate-800/50 flex justify-between items-center">
+          <div className={`mt-8 pt-8 border-t border-slate-800/50 flex justify-between items-center ${isGuest ? 'blur-sm opacity-20' : ''}`}>
             <div>
               <p className="text-[8px] font-black text-slate-600 uppercase">Największe nachylenie</p>
               <p className="text-xl font-black text-white">{workoutData?.debug?.back?.max || 0}°</p>
@@ -173,7 +190,7 @@ const FeedbackPage = ({ workoutData, onBack, onSelectNewExercise }) => {
       </div>
 
       {/* RECOMMENDATIONS */}
-      <div>
+      <div className={isGuest ? 'blur-sm grayscale opacity-30 select-none' : ''}>
         <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-sky-500 mb-6 text-center">Rekomendowane Aktywności</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[
