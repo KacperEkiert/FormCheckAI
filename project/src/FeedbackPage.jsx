@@ -1,219 +1,129 @@
 import React from 'react';
 import { 
-  ChevronLeft, 
-  CheckCircle2, 
-  AlertTriangle, 
-  Trophy, 
-  ArrowRight,
-  PlayCircle,
-  Activity as ActivityIcon,
-  XCircle,
-  Zap,
-  ShieldAlert
+  ChevronLeft, ChevronRight, Play, Award, Target, 
+  Clock, Activity, X, RotateCcw, BarChart3 
 } from 'lucide-react';
 
-const FeedbackPage = ({ workoutData, onBack, isGuest, onLogin }) => {
-  const f = workoutData?.debug?.faults;
-  const score = workoutData?.score || 0;
-
-  // 1. DYNAMICZNA ANALIZA FORMY (Checklista)
-  const getFormAnalysis = () => {
-    const analysis = [];
-    
-    // Plecy
-    if (!f || f.poorBackPct === 0) analysis.push({ label: "Stabilizacja pleców", status: "perfect", desc: "Wzorowa postawa pionowa." });
-    else if (f.poorBackPct < 15) analysis.push({ label: "Stabilizacja pleców", status: "warning", desc: `Lekkie pochylenie (${f.poorBackPct}%).` });
-    else analysis.push({ label: "Stabilizacja pleców", status: "critical", desc: `Zbyt mocne pochylenie (${f.poorBackPct}%).` });
-
-    // Pięty
-    if (!f || f.heelLiftPct === 0) analysis.push({ label: "Kontakt z podłożem", status: "perfect", desc: "Pięty stabilnie na ziemi." });
-    else if (f.heelLiftPct < 10) analysis.push({ label: "Kontakt z podłożem", status: "warning", desc: "Lekkie odrywanie pięt." });
-    else analysis.push({ label: "Kontakt z podłożem", status: "critical", desc: `Pięty w górze (${f.heelLiftPct}% czasu).` });
-
-    // Zakres ruchu
-    const shallowPct = Math.round((f?.shallowReps / (workoutData.reps || 1)) * 100) || 0;
-    if (shallowPct === 0) analysis.push({ label: "Zakres ruchu (ROM)", status: "perfect", desc: "Pełna głębokość powtórzeń." });
-    else if (shallowPct < 30) analysis.push({ label: "Zakres ruchu (ROM)", status: "warning", desc: `${f.shallowReps} powtórzenia zbyt płytkie.` });
-    else analysis.push({ label: "Zakres ruchu (ROM)", status: "critical", desc: `Aż ${shallowPct}% płytkich powtórzeń.` });
-
-    return analysis;
-  };
-
-  // 2. WNIOSKI TRENERA AI
-  const getCoachConclusion = () => {
-    if (score > 90) return {
-      title: "Poziom: ELITE",
-      text: "Twoja technika jest niemal perfekcyjna. Utrzymujesz idealną stabilność kręgosłupa i pełny zakres ruchu. Możesz rozważyć zwiększenie obciążenia w kolejnej sesji.",
-      icon: <Trophy className="text-yellow-500" />
-    };
-    if (score > 70) return {
-      title: "Poziom: SOLID",
-      text: "Bardzo dobra baza. Zwróć uwagę na detale – uciekające plecy lub lekko uniesione pięty w ostatniej fazie ruchu. Kontroluj tempo przy schodzeniu w dół.",
-      icon: <CheckCircle2 className="text-green-500" />
-    };
-    if (score > 40) return {
-      title: "Poziom: DEVELOPING",
-      text: "Technika wymaga poprawy. Twoja forma załamuje się pod wpływem zmęczenia. Skup się na mobilności bioder i pilnuj, aby pięty nie traciły kontaktu z ziemią.",
-      icon: <Zap className="text-amber-500" />
-    };
-    return {
-      title: "Poziom: CRITICAL ALERT",
-      text: "Wykryto błędy zagrażające zdrowiu. Znaczne pochylenie tułowia przy odrywaniu pięt drastycznie obciąża stawy. Zredukuj ciężar i wróć do podstaw techniki.",
-      icon: <ShieldAlert className="text-red-500" />
-    };
-  };
-
-  const formItems = getFormAnalysis();
-  const coach = getCoachConclusion();
+export default function FeedbackPage({ 
+  workouts, 
+  currentIndex, 
+  onNavigate, 
+  onBack, 
+  onSelectNewExercise, 
+  isGuest 
+}) {
+  const current = workouts[currentIndex];
+  
+  if (!current) return null;
 
   return (
-    <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
-      <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-white transition-colors mb-8 group">
-        <ChevronLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
-        <span className="text-xs font-black uppercase tracking-widest">Biblioteka Ćwiczeń</span>
-      </button>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
-        {/* AI PERFORMANCE SCORE */}
-        <div className="lg:col-span-4 bg-slate-900/40 rounded-[2.5rem] border border-slate-800 p-8 flex flex-col items-center justify-center relative overflow-hidden group shadow-2xl">
-          <div className={`absolute inset-0 opacity-5 group-hover:opacity-10 transition-opacity ${score > 70 ? 'bg-green-500' : 'bg-red-500'}`} />
-          <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-500 mb-8 z-10">AI Performance Score</p>
-          
-          <div className="relative h-56 w-56 flex items-center justify-center z-10">
-            <svg className="h-full w-full transform -rotate-90" viewBox="0 0 192 192">
-              <circle cx="96" cy="96" r="88" stroke="currentColor" strokeWidth="10" fill="transparent" className="text-slate-800" />
-              <circle
-                cx="96" cy="96" r="88" stroke="currentColor" strokeWidth="10" fill="transparent"
-                strokeDasharray={552.92}
-                strokeDashoffset={552.92 - (552.92 * score) / 100}
-                className={`${score > 80 ? 'text-green-500 shadow-[0_0_20px_#22c55e]' : score > 50 ? 'text-amber-500' : 'text-red-500'} transition-all duration-1000 ease-out`}
-                strokeLinecap="round"
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-6xl font-black italic tracking-tighter text-white">{score}</span>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">/ 100</span>
-            </div>
-          </div>
-        </div>
-
-        {/* VIDEO REPLAY */}
-        <div className="lg:col-span-8 bg-slate-900/40 rounded-[2.5rem] border border-slate-800 p-4 relative shadow-2xl">
-          <div className="flex items-center justify-between mb-3 px-4">
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-sky-500 animate-pulse" />
-              <span className="text-[9px] font-black uppercase tracking-widest text-sky-500">Session Replay: {workoutData?.name}</span>
-            </div>
-            <span className="text-[9px] font-mono text-slate-600">{workoutData?.date}</span>
-          </div>
-          <div className="aspect-video bg-slate-950 rounded-[1.5rem] overflow-hidden border border-slate-800 relative group">
-            {workoutData?.videoUrl ? (
-              <video src={workoutData.videoUrl} className="w-full h-full object-cover" autoPlay loop muted />
-            ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-slate-800 uppercase font-black italic">
-                <PlayCircle size={64} className="opacity-10" />
-                <span className="text-xs tracking-widest">Nagranie niedostępne</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-        {/* ANALIZA FORMY */}
-        <div className="bg-slate-900/40 rounded-[2.5rem] border border-slate-800 p-8 shadow-xl">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 mb-8 flex items-center gap-2">
-            <ActivityIcon size={14} className="text-sky-500" /> Analiza Formy
-          </h3>
-          <div className="space-y-6">
-            {formItems.map((item, idx) => (
-              <div key={idx} className="flex items-start gap-4 p-4 rounded-2xl bg-slate-950/50 border border-slate-800/50">
-                <div className="mt-1">
-                  {item.status === 'perfect' && <CheckCircle2 className="text-green-500" size={20} />}
-                  {item.status === 'warning' && <AlertTriangle className="text-amber-500" size={20} />}
-                  {item.status === 'critical' && <XCircle className="text-red-500" size={20} />}
-                </div>
-                <div>
-                  <p className="text-[10px] font-black uppercase text-slate-500 tracking-wider mb-1">{item.label}</p>
-                  <p className="text-sm font-bold text-white leading-tight">{item.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* WNIOSKI TRENERA AI */}
-        <div className="bg-slate-900/40 rounded-[2.5rem] border border-slate-800 p-8 shadow-xl flex flex-col relative overflow-hidden">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500 mb-8 flex items-center gap-2">
-            <Zap size={14} className="text-sky-500" /> Wnioski Trenera AI
-          </h3>
-          
-          <div className={`flex-grow flex flex-col justify-center transition-all duration-700 ${isGuest ? 'blur-md grayscale opacity-30 select-none' : ''}`}>
-            <div className="flex items-center gap-4 mb-6">
-              <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800">
-                {coach.icon}
-              </div>
-              <h4 className="text-2xl font-black uppercase italic text-white tracking-tighter">{coach.title}</h4>
-            </div>
-            <p className="text-slate-400 text-sm leading-relaxed font-medium italic border-l-4 border-sky-500 pl-6 py-2">
-              "{coach.text}"
-            </p>
-          </div>
-
-          {isGuest && (
-            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-8 text-center bg-slate-950/40 backdrop-blur-sm">
-              <div className="bg-sky-500 p-3 rounded-2xl mb-4 shadow-[0_0_20px_rgba(14,165,233,0.4)]">
-                <ShieldAlert className="text-slate-950" size={24} />
-              </div>
-              <h4 className="text-lg font-black uppercase italic text-white mb-2 leading-tight">Analiza Zablokowana</h4>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-6 max-w-[200px]">Zaloguj się, aby odblokować pełne wnioski AI i zapisać raport.</p>
-              <button 
-                onClick={onLogin}
-                className="bg-sky-500 text-slate-950 px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-sky-400 transition-all active:scale-95 shadow-lg"
-              >
-                Zaloguj się teraz
-              </button>
-            </div>
-          )}
-          
-          <div className={`mt-8 pt-8 border-t border-slate-800/50 flex justify-between items-center ${isGuest ? 'blur-sm opacity-20' : ''}`}>
-            <div>
-              <p className="text-[8px] font-black text-slate-600 uppercase">Największe nachylenie</p>
-              <p className="text-xl font-black text-white">{workoutData?.debug?.back?.max || 0}°</p>
-            </div>
-            <div>
-              <p className="text-[8px] font-black text-slate-600 uppercase text-right">Głębokość max</p>
-              <p className="text-xl font-black text-white text-right">{workoutData?.debug?.knee?.min || 0}°</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* RECOMMENDATIONS */}
-      <div className={isGuest ? 'blur-sm grayscale opacity-30 select-none' : ''}>
-        <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-sky-500 mb-6 text-center">Rekomendowane Aktywności</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[
-            { id: 2, name: 'Przysiad Bułgarski', category: 'Stabilizacja', diff: 'Medium' },
-            { id: 3, name: 'Rozciąganie Skokowe', category: 'Mobilność', diff: 'Easy' }
-          ].map((ex) => (
-            <button key={ex.id} className="group flex items-center justify-between p-6 bg-slate-900/60 rounded-2xl border border-slate-800 hover:border-sky-500/50 transition-all text-left">
-              <div className="flex items-center gap-4">
-                <div className="h-12 w-12 bg-sky-500/10 rounded-xl flex items-center justify-center group-hover:bg-sky-500 group-hover:text-slate-950 transition-colors">
-                  <ActivityIcon size={20} />
-                </div>
-                <div>
-                  <h4 className="font-black uppercase italic text-white">{ex.name}</h4>
-                  <p className="text-[9px] text-slate-500 uppercase font-bold">{ex.category} • {ex.diff}</p>
-                </div>
-              </div>
-              <ArrowRight size={18} className="text-slate-700 group-hover:text-sky-500 group-hover:translate-x-1 transition-all" />
+    <div className="h-full flex flex-col gap-6 animate-in fade-in duration-500">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <button 
+          onClick={onBack}
+          className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
+        >
+          <ChevronLeft size={20} /> Wróć do listy
+        </button>
+        <div className="flex items-center gap-4 bg-slate-900 border border-slate-800 px-4 py-2 rounded-full">
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+            Sesja {currentIndex + 1} z {workouts.length}
+          </span>
+          <div className="flex gap-1">
+            <button 
+              disabled={currentIndex === 0}
+              onClick={() => onNavigate(currentIndex - 1)}
+              className="p-1 hover:bg-slate-800 rounded-full disabled:opacity-30"
+            >
+              <ChevronLeft size={16} />
             </button>
-          ))}
+            <button 
+              disabled={currentIndex === workouts.length - 1}
+              onClick={() => onNavigate(currentIndex + 1)}
+              className="p-1 hover:bg-slate-800 rounded-full disabled:opacity-30"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-grow grid grid-cols-1 xl:grid-cols-3 gap-6 overflow-y-auto pb-8">
+        {/* Left: Video Player */}
+        <div className="xl:col-span-2 flex flex-col gap-4">
+          <div className="aspect-video bg-black rounded-[2rem] border border-slate-800 overflow-hidden shadow-2xl relative">
+            <video 
+              src={current.videoUrl} 
+              controls 
+              className="w-full h-full object-contain"
+            />
+          </div>
+          <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-800 flex justify-between items-center">
+            <div>
+              <h2 className="text-2xl font-black uppercase italic text-white">{current.name}</h2>
+              <p className="text-slate-400 text-sm font-bold uppercase tracking-wider">{current.date} • {current.reps} powtórzeń</p>
+            </div>
+            <button 
+              onClick={() => onSelectNewExercise({ name: current.name, category: current.category })}
+              className="bg-sky-500 text-slate-950 px-6 py-3 rounded-xl font-black uppercase text-sm hover:bg-sky-400 transition-colors shadow-lg shadow-sky-500/20"
+            >
+              Powtórz ćwiczenie
+            </button>
+          </div>
+        </div>
+
+        {/* Right: Metrics */}
+        <div className="flex flex-col gap-4">
+          <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 shadow-xl">
+            <div className="flex items-center gap-3 mb-6">
+              <Award className="text-amber-500" size={24} />
+              <h3 className="text-lg font-black uppercase tracking-widest">Wynik Sesji</h3>
+            </div>
+            
+            <div className="text-center py-6">
+              <div className="text-7xl font-black italic text-white mb-2">{current.score}<span className="text-2xl text-slate-600">/100</span></div>
+              <div className={`text-sm font-bold uppercase tracking-[0.2em] ${current.score > 80 ? 'text-green-500' : 'text-amber-500'}`}>
+                {current.score > 80 ? 'Mistrzowska technika' : 'Dobra praca'}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mt-6">
+              <div className="bg-black/40 p-4 rounded-2xl border border-slate-800">
+                <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Śr. Głębokość</p>
+                <p className="text-xl font-black">{current.debug.knee.avg}°</p>
+              </div>
+              <div className="bg-black/40 p-4 rounded-2xl border border-slate-800">
+                <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Śr. Pochylenie</p>
+                <p className="text-xl font-black">{current.debug.back.avg}°</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 p-6 rounded-[2rem] border border-slate-800 flex-grow">
+            <div className="flex items-center gap-3 mb-6">
+              <Activity className="text-sky-500" size={24} />
+              <h3 className="text-lg font-black uppercase tracking-widest">Analiza Błędów</h3>
+            </div>
+
+            <div className="space-y-4">
+              <StatRow label="Pięty w górze" value={`${current.debug.faults.heelLiftPct}% czasu`} active={current.debug.faults.heelLiftPct > 10} />
+              <StatRow label="Zgarbienie pleców" value={`${current.debug.faults.poorBackPct}% czasu`} active={current.debug.faults.poorBackPct > 10} />
+              <StatRow label="Zbyt płytkie" value={`${current.debug.faults.shallowReps} powtórzeń`} active={current.debug.faults.shallowReps > 0} />
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
-};
+}
 
-export default FeedbackPage;
+// Pomocniczy komponent do listy błędów
+function StatRow({ label, value, active }) {
+  return (
+    <div className={`flex justify-between items-center p-3 rounded-xl border ${active ? 'bg-red-950/30 border-red-900/50' : 'bg-black/20 border-slate-800'}`}>
+      <span className="text-xs font-bold uppercase tracking-wider text-slate-400">{label}</span>
+      <span className={`text-xs font-black ${active ? 'text-red-400' : 'text-emerald-400'}`}>{value}</span>
+    </div>
+  );
+}

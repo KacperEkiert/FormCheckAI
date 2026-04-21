@@ -4,30 +4,34 @@ import { ACTIVITIES } from './constants';
 
 const GymActivitiesList = ({ onSelectActivity, filter, setFilter }) => {
   const categories = ['Wszystkie', 'Nogi', 'Klatka', 'Plecy', 'Barki', 'Biceps', 'Triceps', 'Core', 'Kardio', 'Przedramie'];
-  const filtered = filter === 'Wszystkie' ? ACTIVITIES : ACTIVITIES.filter(a => a.category.toLowerCase() === filter.toLowerCase());
+  
+  // ZABEZPIECZENIE: Jeśli filter jest undefined, używamy domyślnie 'Wszystkie'
+  const currentFilter = filter || 'Wszystkie';
+
+  // ZABEZPIECZENIE: Używamy optional chaining (?.) przy category
+  const filtered = currentFilter === 'Wszystkie' 
+    ? ACTIVITIES 
+    : ACTIVITIES.filter(a => a.category?.toLowerCase() === currentFilter.toLowerCase());
 
   return (
     <div className="relative p-4 h-full flex flex-col gap-4 overflow-hidden bg-slate-950">
       
-      {/* HEADER Z MEDALEM */}
       <div className="flex justify-between items-center shrink-0 mb-2">
         <h2 className="text-xl font-black italic uppercase tracking-tighter text-white">Trening</h2>
       </div>
 
-      {/* FILTRY KATEGORII */}
       <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide shrink-0 -mx-4 px-4 sm:mx-0 sm:px-0">
         {categories.map(c => (
           <button 
             key={c} 
             onClick={() => setFilter(c)} 
-            className={`px-4 py-2 rounded-full text-[10px] font-black uppercase whitespace-nowrap border transition-all ${filter === c ? 'bg-sky-500 border-sky-500 text-black shadow-[0_0_15px_rgba(14,165,233,0.3)]' : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-600'}`}
+            className={`px-4 py-2 rounded-full text-[10px] font-black uppercase whitespace-nowrap border transition-all ${currentFilter === c ? 'bg-sky-500 border-sky-500 text-black shadow-[0_0_15px_rgba(14,165,233,0.3)]' : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-600'}`}
           >
             {c}
           </button>
         ))}
       </div>
 
-      {/* LISTA ĆWICZEŃ */}
       <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 gap-3 overflow-y-auto pr-2 scrollbar-hide pb-20">
         {filtered.map(a => (
           <div key={a.id} onClick={() => onSelectActivity(a)} className="group bg-slate-900 border border-slate-800 p-3 rounded-xl hover:border-sky-500 transition-all cursor-pointer flex flex-col justify-between h-32 sm:h-36">

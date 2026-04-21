@@ -1,0 +1,1 @@
+Dzisiejszego dnia podczas praktyk zajmowałem się tworzeniem elementów interfaceu, które maja na celu zachęcić użytkownika do częstszego i regularnego korzystania z aplikacji.
