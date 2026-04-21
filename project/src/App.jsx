@@ -5,7 +5,7 @@ import {
   Play, Square, LogOut, ChevronLeft, User, History, 
   Medal, Award, X, Trophy, Target, Clock, Timer
 } from 'lucide-react';
-
+import ExerciseModelViewer from './ExerciseModelViewer';
 import GymActivitiesList from './GymActivitiesList';
 import { ACTIVITIES } from './constants';
 import InteractiveModel from './InteractiveModel';
@@ -420,16 +420,41 @@ export default function App({ onGoToLanding, onGoToLogin, isGuest }) {
             <div className="h-full flex flex-col xl:grid xl:grid-cols-2 gap-6">
               <section className="flex flex-col gap-4 min-h-[400px] order-2 xl:order-1">
                 <div className="flex-grow bg-slate-900/40 rounded-[2rem] border border-slate-800 overflow-hidden relative shadow-inner">
-                  {currentView === 'model' ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center">
-                      <Footprints size={120} className="text-sky-900 opacity-20 absolute" />
-                      <div className="z-10 bg-slate-950/50 p-6 rounded-3xl border border-slate-800/50 backdrop-blur-sm">
-                        <p className="text-sm font-black uppercase text-sky-500 tracking-[0.2em] italic mb-2">Wybrane ćwiczenie</p>
-                        <h3 className="text-2xl font-black uppercase mb-4">{selectedEx.name}</h3>
-                        <p className="text-[10px] text-slate-400 uppercase font-bold max-w-xs leading-relaxed italic border-t border-slate-800 pt-4">Uruchom AI i ustaw się w polu widzenia, aby rozpocząć analizę.</p>
-                      </div>
-                    </div>
-                  ) : (
+                 {currentView === 'model' ? (
+  /* Główny kontener podglądu - flex-col rozdziela nagłówek od modelu */
+  <div className="w-full h-[600px] flex flex-col bg-slate-900/40 rounded-3xl border border-slate-800/50 shadow-inner overflow-hidden">
+    
+    {/* Nagłówek: Teraz jest osobną sekcją na górze i nie zasłania modelu */}
+    <div className="p-6 bg-slate-950/30 border-b border-slate-800/50">
+      <p className="text-[10px] font-black uppercase text-sky-500 tracking-[0.2em] italic mb-1">
+        Podgląd techniki
+      </p>
+      <h3 className="text-2xl font-black uppercase text-white leading-none">
+        {selectedEx.name}
+      </h3>
+      <div className="flex items-center gap-2 mt-2">
+        <span className="px-2 py-0.5 bg-sky-500/10 text-sky-400 text-[9px] font-bold rounded border border-sky-500/20 uppercase">
+          Interaktywny Model 3D
+        </span>
+      </div>
+    </div>
+
+    {/* Kontener na model: zajmuje całą pozostałą przestrzeń */}
+    <div className="flex-1 relative w-full">
+      {selectedEx?.modelPath && (
+        <ExerciseModelViewer modelPath={selectedEx.modelPath} />
+      )}
+      
+      {/* Instrukcja obracania - mała i nienachalna w rogu */}
+      <div className="absolute bottom-4 right-4 pointer-events-none">
+        <p className="text-[9px] text-slate-500 uppercase font-bold italic bg-slate-950/50 px-3 py-1 rounded-full backdrop-blur-sm">
+          Przytrzymaj i przesuń, aby obrócić
+        </p>
+      </div>
+    </div>
+  </div>
+) : (
+  
                     <GymActivitiesList onSelectActivity={(a) => { setSelectedEx(a); setCurrentView('model'); }} filter={muscleFilter} setFilter={setMuscleFilter} />
                   )}
                 </div>
