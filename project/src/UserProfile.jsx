@@ -9,7 +9,7 @@ import { supabase } from './supabaseClient';
 
 // --- KONFIGURACJA SYSTEMU ---
 const DEFAULT_FORM_DATA = {
-  firstName: '', lastName: '', age: '25', weight: '75', height: '180',
+  firstName: '', lastName: '', age: '0', weight: '0', height: '0',
   gender: 'Mężczyzna', goal: 'Masa', activityLevel: 'Moderowany',
   experience: 'Początkujący', diet: 'Zbilansowana', equipment: 'Siłownia',
   trainingDays: ['Pon', 'Śr', 'Pią'], bio: '',
@@ -334,6 +334,7 @@ const UserProfile = ({ avatarUrl, onAvatarChange, isGuest, onLogin, initialAchie
               <HeaderZapisz title="Dane Fizyczne" saveProfileData={saveProfileData} saveState={saveState} />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Input text="Imię" val={formData.firstName} onChange={(e)=>setFormData({...formData, firstName: e.target.value})} />
+                <Input text="Nazwisko" val={formData.lastName} onChange={(e) => setFormData({ ...formData, lastName: e.target.value })} />
                 <Input text="Wiek" type="number" val={formData.age} onChange={(e)=>setFormData({...formData, age: e.target.value})} />
                 <Input text="Waga (kg)" type="number" val={formData.weight} onChange={(e)=>setFormData({...formData, weight: e.target.value})} />
                 <Input text="Wzrost (cm)" type="number" val={formData.height} onChange={(e)=>setFormData({...formData, height: e.target.value})} />
