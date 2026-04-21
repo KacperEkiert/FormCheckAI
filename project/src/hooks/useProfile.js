@@ -22,16 +22,22 @@ export const useProfile = (isGuest) => {
   const [saveState, setSaveState] = useState('idle');
 
   const runDiagnostics = useCallback((data) => {
-    const w = parseFloat(data.weight) || 75;
-    const h = parseFloat(data.height) || 180;
-    const a = parseFloat(data.age) || 25;
+    const w = parseFloat(data.weight);
+    const h = parseFloat(data.height);
+    const a = parseFloat(data.age);
+
+    // Jeśli dane są niekompletne lub błędne, zwróć domyślne statystyki
+    if (!w || !h || w <= 0 || h <= 0) {
+      return DEFAULT_STATS;
+    }
+
     const bmiVal = parseFloat((w / Math.pow(h / 100, 2)).toFixed(1));
     let status = 'Norma';
     if (bmiVal < 18.5) status = 'Niedowaga';
     else if (bmiVal > 25 && bmiVal <= 30) status = 'Nadwaga';
     else if (bmiVal > 30) status = 'Otyłość';
 
-    let bmrVal = (10 * w) + (6.25 * h) - (5 * a);
+    let bmrVal = (10 * w) + (6.25 * h) - (5 * (a || 25));
     bmrVal = data.gender === 'Mężczyzna' ? bmrVal + 5 : bmrVal - 161;
     const multipliers = { 'Minimalny': 1.2, 'Niski': 1.375, 'Moderowany': 1.55, 'Wysoki': 1.725, 'Ekstremalny': 1.9 };
     const tdeeVal = Math.round(bmrVal * (multipliers[data.activityLevel] || 1.2));
@@ -110,16 +116,21 @@ export const useProfile = (isGuest) => {
   const saveProfileData = async () => {
     if (isGuest) return;
     setSaveState('saving');
+    
+    const parsedAge = parseInt(formData.age);
+    const parsedWeight = parseFloat(formData.weight);
+    const parsedHeight = parseFloat(formData.height);
+
     const cleanData = {
       ...formData,
-      age: Math.max(13, parseInt(formData.age) || 25).toString(),
-      weight: Math.max(30, parseFloat(formData.weight) || 75).toString(),
-      height: Math.max(100, parseFloat(formData.height) || 180).toString(),
+      age: (!isNaN(parsedAge) ? Math.max(1, parsedAge) : 0).toString(),
+      weight: (!isNaN(parsedWeight) ? Math.max(1, parsedWeight) : 0).toString(),
+      height: (!isNaN(parsedHeight) ? Math.max(1, parsedHeight) : 0).toString(),
       measurements: {
-        chest: formData.measurements.chest ? Math.max(0, parseFloat(formData.measurements.chest)).toString() : '',
-        arm: formData.measurements.arm ? Math.max(0, parseFloat(formData.measurements.arm)).toString() : '',
-        waist: formData.measurements.waist ? Math.max(0, parseFloat(formData.measurements.waist)).toString() : '',
-        thigh: formData.measurements.thigh ? Math.max(0, parseFloat(formData.measurements.thigh)).toString() : '',
+        chest: formData.measurements.chest ? (parseFloat(formData.measurements.chest) || 0).toString() : '',
+        arm: formData.measurements.arm ? (parseFloat(formData.measurements.arm) || 0).toString() : '',
+        waist: formData.measurements.waist ? (parseFloat(formData.measurements.waist) || 0).toString() : '',
+        thigh: formData.measurements.thigh ? (parseFloat(formData.measurements.thigh) || 0).toString() : '',
       }
     };
 

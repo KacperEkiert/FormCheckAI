@@ -185,8 +185,20 @@ const UserProfile = ({ avatarUrl, onAvatarChange, isGuest, onLogin, initialAchie
                 <h4 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-2 mb-6"><HeartPulse className="text-rose-500"/> Stan Organizmu</h4>
                 <div className="flex justify-between items-end mb-2"><span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">BMI</span><span className="text-2xl font-black text-white italic">{stats.bmi}</span></div>
                 <div className="relative h-3 w-full bg-slate-950 rounded-full border border-slate-800 flex overflow-hidden">
-                  <div className="h-full bg-sky-500" style={{ width: '18.5%' }}></div><div className="h-full bg-emerald-500" style={{ width: '6.5%' }}></div><div className="h-full bg-amber-500" style={{ width: '5%' }}></div><div className="h-full bg-rose-500" style={{ width: '70%' }}></div>
-                  <div className="absolute top-0 bottom-0 w-1 bg-white shadow-xl transition-all duration-1000" style={{ left: `${Math.min(100, (parseFloat(stats.bmi) / 40) * 100)}%` }}></div>
+                  <div className="h-full bg-sky-500" style={{ width: '25%' }}></div>
+                  <div className="h-full bg-emerald-500" style={{ width: '25%' }}></div>
+                  <div className="h-full bg-amber-500" style={{ width: '25%' }}></div>
+                  <div className="h-full bg-rose-500" style={{ width: '25%' }}></div>
+                  <div className="absolute top-0 bottom-0 w-1 bg-white shadow-xl transition-all duration-1000" style={{ 
+                    left: `${(() => {
+                      const b = parseFloat(stats.bmi) || 0;
+                      if (b <= 0) return 0;
+                      if (b <= 18.5) return (b / 18.5) * 25;
+                      if (b <= 25) return 25 + ((b - 18.5) / (25 - 18.5)) * 25;
+                      if (b <= 30) return 50 + ((b - 25) / (30 - 25)) * 25;
+                      return Math.min(100, 75 + ((b - 30) / 10) * 25);
+                    })()}%` 
+                  }}></div>
                 </div>
                 <p className="text-[10px] font-black uppercase mt-2 text-right text-slate-500">Kategoria: {stats.status}</p>
               </div>

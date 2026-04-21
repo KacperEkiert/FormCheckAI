@@ -7,10 +7,16 @@ export const getBestPolishVoice = () => {
          null;
 };
 
-export const createSpeakFunction = (lastSpokenRef) => (text, type, cooldown = 4000) => {
+export const createSpeakFunction = (lastSpokenRef) => (text, type, cooldown = 4000, cancelPrevious = false) => {
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
   const now = Date.now();
-  if (window.speechSynthesis.speaking) return;
+  
+  if (cancelPrevious) {
+    window.speechSynthesis.cancel();
+  } else if (window.speechSynthesis.speaking) {
+    return;
+  }
+
   if (lastSpokenRef.current[type] && now - lastSpokenRef.current[type] < cooldown) return;
 
   const utterance = new SpeechSynthesisUtterance(text);

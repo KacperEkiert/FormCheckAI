@@ -13,7 +13,8 @@ const CameraView = ({ isActive, isGuest, onWorkoutFinish }) => {
     calibProgress,
     isHeelLifted,
     timeLeft,
-    countdown
+    countdown,
+    qualityAlert
   } = useWorkoutDetection(isActive, isGuest, onWorkoutFinish);
 
   const formatTime = (s) => `${Math.floor(s/60)}:${(s%60).toString().padStart(2, '0')}`;
@@ -22,6 +23,13 @@ const CameraView = ({ isActive, isGuest, onWorkoutFinish }) => {
     <div className="relative w-full h-full bg-slate-950 rounded-[2rem] border border-slate-800 overflow-hidden shadow-2xl">
       <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover opacity-0" playsInline muted />
       <canvas ref={canvasRef} className="w-full h-full object-cover scale-x-[-1]" />
+      
+      {qualityAlert && (
+        <div className="absolute top-8 left-1/2 -translate-x-1/2 z-[60] bg-red-600/90 text-white px-6 py-2 rounded-full font-black text-xs uppercase tracking-widest shadow-2xl backdrop-blur-md animate-pulse">
+          ⚠️ {qualityAlert}
+        </div>
+      )}
+
       {workoutStage === 'active' && (
         <>
           <div className="absolute top-8 right-8 flex flex-col items-end gap-4 z-50">

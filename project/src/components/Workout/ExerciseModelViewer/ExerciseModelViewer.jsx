@@ -1,7 +1,7 @@
 import React, { Suspense, useEffect, useRef } from 'react';
 import { Canvas, useFrame, useLoader } from '@react-three/fiber';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader';
-import { OrbitControls } from '@react-three/drei';
+import { OrbitControls, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
 
 const Model = ({ path }) => {
@@ -41,8 +41,24 @@ const ExerciseModelViewer = ({ modelPath }) => {
           maxDistance={8} 
         />
         
-        <ambientLight intensity={1.5} />
-        <directionalLight position={[0, 10, 5]} intensity={2.5} />
+        {/* Oświetlenie Ultra Bright */}
+        <ambientLight intensity={2.5} />
+        <pointLight position={[10, 15, 10]} intensity={6.5} />
+        <pointLight position={[-10, 15, -10]} intensity={4.5} />
+        
+        <directionalLight position={[5, 10, 5]} intensity={8.5} />
+        <directionalLight position={[-5, 10, -5]} intensity={5.5} />
+        <directionalLight position={[0, -5, 0]} intensity={4.5} />
+        <directionalLight position={[0, 5, 15]} intensity={5.0} />
+
+        {/* Cień pod modelem */}
+        <ContactShadows 
+          position={[0, -1.2, 0]} 
+          opacity={0.6} 
+          scale={10} 
+          blur={2.5} 
+          far={1.5} 
+        />
         
         <Suspense fallback={null}>
           <Model path={modelPath} />

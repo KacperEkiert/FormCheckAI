@@ -2,27 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer utilities {
-  .scrollbar-custom::-webkit-scrollbar {
-    width: 10px;
+@layer base {
+  /* Global sleek scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #1e293b transparent;
   }
 
-  .scrollbar-custom::-webkit-scrollbar-track {
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
     background: transparent;
   }
 
-  .scrollbar-custom::-webkit-scrollbar-thumb {
-    background-color: #1e293b; 
-    border-radius: 20px;
-    border: 3px solid #020617; 
+  *::-webkit-scrollbar-thumb {
+    background-color: #1e293b;
+    border-radius: 10px;
+    transition: background-color 0.3s ease;
   }
 
-  .scrollbar-custom::-webkit-scrollbar-thumb:hover {
-    background-color: #0ea5e9; 
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: #0ea5e9;
   }
+}
 
-  .scrollbar-custom {
-    scrollbar-width: thin;
-    scrollbar-color: #1e293b transparent;
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 }
