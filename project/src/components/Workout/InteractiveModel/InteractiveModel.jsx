@@ -4,6 +4,7 @@ import { useGLTF, PresentationControls, Stage, Html } from '@react-three/drei'
 
 function Model({ onPartClick, selectedCategory }) {
   const { nodes } = useGLTF('/human_model.glb')
+  const [hovered, setHovered] = React.useState(null);
 
   const nameMap = {
     "Klata": "KLATKA",
@@ -30,27 +31,27 @@ function Model({ onPartClick, selectedCategory }) {
         const mappedCategory = nameMap[name];
         const isSelectable = !!mappedCategory;
         const isHighlighted = selectedCategory === mappedCategory;
+        const isHovered = hovered === name;
 
         return (
           <mesh
             key={name}
             geometry={obj.geometry}
+            onPointerOver={(e) => { e.stopPropagation(); if(isSelectable) setHovered(name); }}
+            onPointerOut={() => setHovered(null)}
             onClick={(e) => {
               e.stopPropagation(); 
-              console.log("%c >>> KLIKNIĘTO MESH:", "color: #38bdf8; font-weight: bold", name);
-              
               if (isSelectable) {
-                console.log("%c >>> DOPASOWANO:", "color: #d11414; font-weight: bold", mappedCategory);
                 onPartClick(mappedCategory); 
               }
             }}
           >
             <meshStandardMaterial 
-              color={isHighlighted ? "#7dd3fc" : (isSelectable ? "#7dd3fc" : "#7dd3fc")}
-              emissive={isHighlighted ? "#d11414" : "#000000"}
-              emissiveIntensity={isHighlighted ? 0.8 : 0}
-              roughness={0.4}
-              metalness={0.5}
+              color={isHighlighted ? "#38bdf8" : (isHovered ? "#7dd3fc" : "#1e293b")}
+              emissive={isHighlighted ? "#38bdf8" : (isHovered ? "#0ea5e9" : "#000000")}
+              emissiveIntensity={isHighlighted ? 0.5 : (isHovered ? 0.3 : 0)}
+              roughness={0.3}
+              metalness={0.8}
               transparent={false}
             />
           </mesh>

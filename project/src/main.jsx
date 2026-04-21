@@ -6,8 +6,6 @@ import Gate from './Gate.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <Gate>
-      <App />
-    </Gate>
+    <Gate />
   </StrictMode>,
 )

@@ -1,17 +1,15 @@
 import React from 'react';
 import { 
-  ChevronLeft, ChevronRight, Play, Award, Target, 
-  Clock, Activity, X, RotateCcw, BarChart3 
+  ChevronLeft, ChevronRight, Award, Activity 
 } from 'lucide-react';
 
-export default function FeedbackPage({ 
+const FeedbackPage = ({ 
   workouts, 
   currentIndex, 
   onNavigate, 
   onBack, 
-  onSelectNewExercise, 
-  isGuest 
-}) {
+  onSelectNewExercise 
+}) => {
   const current = workouts[currentIndex];
   
   if (!current) return null;
@@ -116,9 +114,8 @@ export default function FeedbackPage({
       </div>
     </div>
   );
-}
+};
 
-// Pomocniczy komponent do listy błędów
 function StatRow({ label, value, active }) {
   return (
     <div className={`flex justify-between items-center p-3 rounded-xl border ${active ? 'bg-red-950/30 border-red-900/50' : 'bg-black/20 border-slate-800'}`}>
@@ -127,3 +124,5 @@ function StatRow({ label, value, active }) {
     </div>
   );
 }
+
+export default FeedbackPage;

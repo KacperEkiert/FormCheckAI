@@ -1,141 +1,24 @@
-import React, { useState } from 'react';
-import { supabase } from './supabaseClient';
+import React from 'react';
 import { 
   User, Mail, Lock, ArrowRight, CheckCircle2, 
-  AlertCircle, Loader2, Eye, EyeOff 
+  AlertCircle, Loader2
 } from 'lucide-react';
+import InputField from './InputField';
 
-const InputField = ({ name, icon: Icon, placeholder, type = "text", error, showEyeToggle, value, onChange, showPassword, setShowPassword, autoComplete, isCompact }) => (
-  <div className={`w-full ${isCompact ? 'min-h-[60px]' : 'min-h-[68px]'} transition-all duration-300`}>
-    <div className={`relative w-full flex items-center bg-[#0f172a]/60 border rounded-xl outline-none transition-all duration-300
-        ${error 
-          ? 'border-red-500 shadow-[0_0_10px_rgba(239,68,68,0.2)]' 
-          : 'border-slate-800 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500/20'
-        }`}>
-      {Icon && (
-        <div className={`absolute left-3 z-10 transition-colors ${error ? 'text-red-500' : 'text-slate-500'}`}>
-          <Icon size={14} />
-        </div>
-      )}
-      <input
-        name={name}
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        onChange={onChange}
-        autoComplete={autoComplete || "off"}
-        className={`w-full ${isCompact ? 'h-[38px]' : 'h-[44px]'} bg-transparent p-3 rounded-xl text-slate-100 text-[13px] outline-none placeholder:text-slate-600 font-medium
-          ${Icon ? 'pl-10' : 'pl-3'}
-          ${showEyeToggle ? 'pr-10' : 'pr-3'}
-          autofill-custom`}
-      />
-      {showEyeToggle && (
-        <button 
-          type="button" 
-          onClick={() => setShowPassword(!showPassword)} 
-          className="absolute right-3 text-slate-500 hover:text-white transition-colors z-10"
-        >
-          {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-        </button>
-      )}
-    </div>
-    {error ? (
-      <span className="text-[10px] text-red-500 font-bold ml-2 mt-1 block uppercase tracking-wider animate-in fade-in slide-in-from-top-1">
-        {error}
-      </span>
-    ) : (
-      <div className={isCompact ? "h-[8px]" : "h-[12px]"}></div> 
-    )}
-  </div>
-);
-
-export default function Auth({ onGoToLanding }) {
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [isEmailSent, setIsEmailSent] = useState(false); 
-  const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
-  const [errors, setErrors] = useState({});
-  const [authError, setAuthError] = useState('');
-  const [isShaking, setIsShaking] = useState(false);
-  
-  const [formData, setFormData] = useState({
-    email: '', password: '', confirmPassword: '', firstName: '', lastName: ''
-  });
-
-  const triggerShake = () => {
-    setIsShaking(true);
-    setTimeout(() => setIsShaking(false), 400);
-  };
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    setAuthError('');
-    if (errors[name]) {
-      setErrors(prev => {
-        const newErrs = { ...prev };
-        delete newErrs[name];
-        return newErrs;
-      });
-    }
-  };
-
-  const validate = () => {
-    let newErrors = {};
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) newErrors.email = "Błędny format e-mail";
-    if (formData.password.length < 6) newErrors.password = "Hasło: min. 6 znaków";
-    if (isRegistering) {
-      if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = "Hasła nie są identyczne";
-      if (!formData.firstName) newErrors.firstName = "Podaj imię";
-      if (!formData.lastName) newErrors.lastName = "Podaj nazwisko";
-    }
-    
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      triggerShake();
-      return false;
-    }
-    return true;
-  };
-
-  const handleAuth = async (e) => {
-    e.preventDefault();
-    setAuthError('');
-    if (!validate()) return;
-    setLoading(true);
-
-    try {
-      if (isRegistering) {
-        const { data, error } = await supabase.auth.signUp({
-          email: formData.email,
-          password: formData.password,
-          options: { 
-            data: { first_name: formData.firstName, last_name: formData.lastName },
-            emailRedirectTo: window.location.origin 
-          }
-        });
-        if (error) throw error;
-
-        if (data?.user && !data?.session) {
-          setIsEmailSent(true);
-        }
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: formData.email,
-          password: formData.password
-        });
-        if (error) throw error;
-      }
-    } catch (err) {
-      triggerShake();
-      const errMsg = err.message === "Invalid login credentials" ? "BŁĘDNY E-MAIL LUB HASŁO" : err.message.toUpperCase();
-      setAuthError(errMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
+export default function Auth({ onGoToLanding, authState }) {
+  const {
+    isRegistering, setIsRegistering,
+    isEmailSent, setIsEmailSent,
+    authLoading,
+    showPassword, setShowPassword,
+    rememberMe, setRememberMe,
+    errors, setErrors,
+    authError, setAuthError,
+    isShaking,
+    formData,
+    handleChange,
+    handleAuth
+  } = authState;
 
   return (
     <div className="fixed inset-0 bg-[#0a0f1d] flex items-center justify-center p-4 antialiased overflow-hidden" style={{ fontFamily: '"Inter", sans-serif' }}>
@@ -220,8 +103,8 @@ export default function Auth({ onGoToLanding }) {
                   </>
                 )}
                 
-                <button disabled={loading} type="submit" className="w-full bg-gradient-to-r from-sky-500 to-blue-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-sky-500/20 mt-3 active:scale-[0.97] transition-all flex items-center justify-center gap-3 text-[11px] tracking-[0.2em] uppercase relative z-10 hover:shadow-sky-500/30">
-                  {loading ? <Loader2 className="animate-spin size-4" /> : <>{isRegistering ? 'Utwórz konto' : 'Zaloguj się'} <ArrowRight size={16} /></>}
+                <button disabled={authLoading} type="submit" className="w-full bg-gradient-to-r from-sky-500 to-blue-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-sky-500/20 mt-3 active:scale-[0.97] transition-all flex items-center justify-center gap-3 text-[11px] tracking-[0.2em] uppercase relative z-10 hover:shadow-sky-500/30">
+                  {authLoading ? <Loader2 className="animate-spin size-4" /> : <>{isRegistering ? 'Utwórz konto' : 'Zaloguj się'} <ArrowRight size={16} /></>}
                 </button>
               </form>
 

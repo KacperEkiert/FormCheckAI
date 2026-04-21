@@ -1,5 +1,5 @@
+import React from 'react';
 import { Zap, Dumbbell, Timer, Trophy, Flame } from 'lucide-react';
-import React from 'react'; // Potrzebne do ikon JSX
 
 export const ACTIVITIES = [
   { id: "001", name: 'Przysiady Klasyczne', category: 'Nogi', time: '15m', icon: <Zap size={16} className="text-amber-400"/>, achievement: "Król Przysiadów" },

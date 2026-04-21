@@ -1,30 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient';
-import Auth from './Auth';
+import React, { useState } from 'react';
+import { useAuth } from './hooks';
+import { Auth, LandingPage } from './components';
 import App from './App';
-import LandingPage from './LandingPage';
 
 export default function Gate() { 
-  const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const authState = useAuth();
+  const { session, loading, isGuest, setIsGuest } = authState;
   const [showLanding, setShowLanding] = useState(true);
-  const [isGuest, setIsGuest] = useState(false);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) {
-        setIsGuest(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
 
   const handleStartDemo = () => {
     setIsGuest(true);
@@ -48,10 +30,10 @@ export default function Gate() {
     );
   }
 
-  // Jeśli kliknięto "Zaloguj" (isGuest=false) i nie ma sesji -> EKRAŃ LOGOWANIA
-  if (!session && !isGuest) return <Auth onGoToLanding={() => setShowLanding(true)} />;
+  if (!session && !isGuest) {
+    return <Auth authState={authState} onGoToLanding={() => setShowLanding(true)} />;
+  }
 
-  // Używamy KEY, aby React wymusił całkowity re-render App przy zmianie trybu Demo -> Login
   return <App 
     key={isGuest ? 'guest-app' : (session?.user?.id || 'auth-app')}
     session={session} 
