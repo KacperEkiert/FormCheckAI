@@ -1,0 +1,1 @@
+Dziś zajmowałem się trenowaniem modelu AI odpowiedzialnego za sprawdzanie poprawności wykonywania przysiadów w naszym projekcie.
