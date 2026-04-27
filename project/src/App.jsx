@@ -181,6 +181,7 @@ export default function App({ onGoToLanding, onGoToLogin, isGuest }) {
                       isActive={active} 
                       isGuest={isGuest} 
                       onWorkoutFinish={handleWorkoutFinish} 
+                      selectedEx={selectedEx}
                     />
                   )}
                 </div>

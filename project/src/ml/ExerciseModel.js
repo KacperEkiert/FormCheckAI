@@ -13,7 +13,8 @@ const KEY_LANDMARKS = [
 export class ExerciseModel {
   constructor() {
     this.model = null;
-    this.labels = ['valgus', 'lean', 'shallow', 'heels_up'];
+    // Expanded labels for better exercise orchestration
+    this.labels = ['valgus', 'lean', 'shallow', 'heels_up', 'correct', 'up', 'down'];
     this.isTraining = false;
   }
 
@@ -21,38 +22,93 @@ export class ExerciseModel {
   static extractFeatures(landmarks) {
     if (!landmarks || landmarks.length < 33) return null;
 
-    // Calculate center of hips (pelvis)
+    const calculateAngle3D = (a, b, c) => {
+      const ba = { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+      const bc = { x: c.x - b.x, y: c.y - b.y, z: c.z - b.z };
+      const dot = ba.x * bc.x + ba.y * bc.y + ba.z * bc.z;
+      const normBa = Math.hypot(ba.x, ba.y, ba.z);
+      const normBc = Math.hypot(bc.x, bc.y, bc.z);
+      if (normBa === 0 || normBc === 0) return 0;
+      let cosineAngle = dot / (normBa * normBc);
+      cosineAngle = Math.max(Math.min(cosineAngle, 1.0), -1.0);
+      return (Math.acos(cosineAngle) * 180.0) / Math.PI;
+    };
+
+    const shoulderLeft = landmarks[11];
+    const shoulderRight = landmarks[12];
     const hipLeft = landmarks[23];
     const hipRight = landmarks[24];
+    const kneeLeft = landmarks[25];
+    const kneeRight = landmarks[26];
+    const ankleLeft = landmarks[27];
+    const ankleRight = landmarks[28];
+    const heelLeft = landmarks[29];
+    const heelRight = landmarks[30];
+    const toeLeft = landmarks[31];
+    const toeRight = landmarks[32];
+
+    const kneeL = calculateAngle3D(hipLeft, kneeLeft, ankleLeft);
+    const kneeR = calculateAngle3D(hipRight, kneeRight, ankleRight);
+    const hipL = calculateAngle3D(shoulderLeft, hipLeft, kneeLeft);
+    const hipR = calculateAngle3D(shoulderRight, hipRight, kneeRight);
+    const ankleL = calculateAngle3D(kneeLeft, ankleLeft, toeLeft);
+    const ankleR = calculateAngle3D(kneeRight, ankleRight, toeRight);
+
     const pelvis = {
       x: (hipLeft.x + hipRight.x) / 2,
       y: (hipLeft.y + hipRight.y) / 2,
       z: (hipLeft.z + hipRight.z) / 2
     };
-
-    // Calculate center of shoulders (neck)
-    const shoulderLeft = landmarks[11];
-    const shoulderRight = landmarks[12];
     const neck = {
       x: (shoulderLeft.x + shoulderRight.x) / 2,
       y: (shoulderLeft.y + shoulderRight.y) / 2,
       z: (shoulderLeft.z + shoulderRight.z) / 2
     };
+    const vertical = { x: pelvis.x, y: pelvis.y - 1, z: pelvis.z };
+    const torsoLean = calculateAngle3D(neck, pelvis, vertical);
 
-    // Use torso length as scale unit
+    const kneeDist = Math.hypot(kneeLeft.x - kneeRight.x, kneeLeft.y - kneeRight.y, Math.abs(kneeLeft.z - kneeRight.z));
+    const hipDist = Math.hypot(hipLeft.x - hipRight.x, hipLeft.y - hipRight.y, Math.abs(hipLeft.z - hipRight.z));
+    const valgusIndex = hipDist > 0 ? kneeDist / hipDist : 1.0;
+
     const torsoSize = Math.hypot(pelvis.x - neck.x, pelvis.y - neck.y, pelvis.z - neck.z) || 1;
+    const heelLiftL = (heelLeft.y - toeLeft.y) / torsoSize;
+    const heelLiftR = (heelRight.y - toeRight.y) / torsoSize;
 
-    let features = [];
-    for (let i of KEY_LANDMARKS) {
-      const lm = landmarks[i];
-      features.push(
-        (lm.x - pelvis.x) / torsoSize,
-        (lm.y - pelvis.y) / torsoSize,
-        (lm.z - pelvis.z) / torsoSize,
-        lm.visibility || 0
-      );
-    }
-    return features;
+    const avgKneeY = (kneeLeft.y + kneeRight.y) / 2;
+    const depthIndex = (pelvis.y - avgKneeY) / torsoSize;
+
+    // --- Nowe Cechy Holistyczne (Poza Szkieletem) ---
+    
+    // 1. Wskaźnik Kompresji (Aspect Ratio) - wykrywa zapadanie się sylwetki
+    const shoulderWidth = Math.abs(shoulderLeft.x - shoulderRight.x);
+    const bodyHeight = Math.abs(pelvis.y - neck.y);
+    const compressionRatio = bodyHeight > 0 ? shoulderWidth / bodyHeight : 1.0;
+
+    // 2. Środek Ciężkości (Balance) - przesunięcie miednicy względem bazy stóp
+    const footCenterX = (toeLeft.x + toeRight.x) / 2;
+    const balanceShift = pelvis.x - footCenterX;
+
+    // 3. Symetria (Symmetry Index) - różnica w obciążeniu bioder
+    const hipSymmetry = Math.abs(hipLeft.y - hipRight.y) / torsoSize;
+
+    return [
+      kneeL / 180.0,
+      kneeR / 180.0,
+      hipL / 180.0,
+      hipR / 180.0,
+      ankleL / 180.0,
+      ankleR / 180.0,
+      torsoLean / 180.0,
+      valgusIndex,
+      heelLiftL,
+      heelLiftR,
+      depthIndex,
+      // Dodane cechy holistyczne (łącznie 14 cech)
+      compressionRatio,
+      balanceShift,
+      hipSymmetry
+    ];
   }
 
   buildModel(inputSize, outputSize) {
@@ -83,7 +139,7 @@ export class ExerciseModel {
     });
   }
 
-  // Augment dataset for low quality conditions (adds noise, drops random joints to simulate occlusion)
+  // Augment dataset for low quality conditions (adds slight noise to features)
   augmentDataset(dataset, factor = 2) {
     const augmented = [];
     for (let item of dataset) {
@@ -91,21 +147,12 @@ export class ExerciseModel {
       if (item.features) {
         for (let i = 0; i < factor; i++) {
           let noisyFeatures = [...item.features];
-          // Each feature is 4 values: x, y, z, visibility
-          for (let j = 0; j < noisyFeatures.length; j += 4) {
-            // Drop some joints randomly (10% chance)
-            if (Math.random() < 0.1) {
-              noisyFeatures[j] = 0;
-              noisyFeatures[j+1] = 0;
-              noisyFeatures[j+2] = 0;
-              noisyFeatures[j+3] = 0; // visibility 0
-            } else {
-              // Add Gaussian noise (simulating low res/poor light)
-              noisyFeatures[j] += (Math.random() - 0.5) * 0.05;
-              noisyFeatures[j+1] += (Math.random() - 0.5) * 0.05;
-              noisyFeatures[j+2] += (Math.random() - 0.5) * 0.05;
-            }
+          
+          // Add slight noise to all features to prevent overfitting
+          for (let j = 0; j < noisyFeatures.length; j++) {
+            noisyFeatures[j] += (Math.random() - 0.5) * 0.05;
           }
+
           augmented.push({ features: noisyFeatures, labels: item.labels });
         }
       }
@@ -178,8 +225,8 @@ export class ExerciseModel {
     return result;
   }
 
-  async save(path = 'localstorage://exercise-model') {
-    if (this.model) {
+  async save(path) {
+    if (this.model && path) {
       await this.model.save(path);
       // If it's localstorage, we also save labels there. 
       // On server, we might save a labels.json alongside.
@@ -215,7 +262,7 @@ export class ExerciseModel {
       }
       return true;
     } catch (e) {
-      console.warn("No saved model found", e);
+      // Wyciszamy błąd, ponieważ useWorkoutDetection sam informuje o braku modelu
       return false;
     }
   }

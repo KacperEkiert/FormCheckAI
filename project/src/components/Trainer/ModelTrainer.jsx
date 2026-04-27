@@ -35,9 +35,24 @@ export default function ModelTrainer({ onBack }) {
       for (let file of datasetFiles) {
         const text = await getFileText(file);
         const json = JSON.parse(text);
-        if (json.frames) {
+        if (json.frames && json.frames.length > 0) {
+          // Walidacja spójności cech wewnątrz pliku
+          const firstFrameFeatures = json.frames[0]?.features?.length;
+          if (json.frames.some(f => !f.features || f.features.length !== firstFrameFeatures)) {
+             throw new Error(`Plik ${file.name || 'z chmury'} posiada uszkodzone lub niejednolite dane (różna liczba cech w klatkach).`);
+          }
           fullDataset = fullDataset.concat(json.frames);
         }
+      }
+
+      if (fullDataset.length === 0) {
+        throw new Error("Brak danych do treningu. Upewnij się, że wgrane pliki JSON zawierają tablicę 'frames'.");
+      }
+
+      // Walidacja spójności między wszystkimi plikami
+      const globalInputSize = fullDataset[0].features.length;
+      if (fullDataset.some(f => f.features.length !== globalInputSize)) {
+        throw new Error(`Wykryto niespójność danych. Niektóre pliki mają ${globalInputSize} cech, a inne inną liczbę. Nie mieszaj starych nagrań z nowymi.`);
       }
 
       // Analiza balansu danych
@@ -56,16 +71,18 @@ export default function ModelTrainer({ onBack }) {
         }
       }
 
-      setStatus(`Rozpoczęto trening na ${fullDataset.length} próbkach...`);
+      const inputSize = fullDataset[0]?.features?.length || 0;
+      setStatus(`Rozpoczęto trening na ${fullDataset.length} próbkach (Cechy: ${inputSize})...`);
+      const exerciseId = JSON.parse(await getFileText(datasetFiles[0])).exerciseId || 'squat';
 
       await model.train(fullDataset, (epoch, logs) => {
         setProgress(Math.round(((epoch + 1) / 50) * 100));
-        setStatus(`Epoka ${epoch + 1}/50 | Strata: ${logs.loss.toFixed(4)}`);
+        setStatus(`Epoka ${epoch + 1}/50 | Strata: ${logs.loss.toFixed(4)} | Cechy: ${inputSize}`);
       });
 
       setStatus("Trening zakończony pomyślnie. Zapisywanie...");
-      await model.save();
-      setStatus("Model zapisany. Możesz teraz wrócić do aplikacji.");
+      await model.save(`localstorage://${exerciseId}-model`);
+      setStatus(`Model ${exerciseId} zapisany. Możesz teraz wrócić do aplikacji.`);
 
     } catch (err) {
       console.error(err);
@@ -222,17 +239,24 @@ export default function ModelTrainer({ onBack }) {
   };
 
   const resetModel = async () => {
-    if (!confirm("Czy na pewno chcesz usunąć wytrenowany model? Tej operacji nie da się cofnąć.")) return;
+    if (!confirm("Czy na pewno chcesz usunąć WSZYSTKIE wytrenowane modele? Tej operacji nie da się cofnąć.")) return;
 
     try {
-      // 1. Czyścimy LocalStorage
+      // 1. Czyścimy LocalStorage dla wszystkich znanych ćwiczeń
+      const exercises = ['squat', 'pushup', 'lunge', 'jumping_jacks'];
+      exercises.forEach(ex => {
+        localStorage.removeItem(`localstorage://${ex}-model`);
+        localStorage.removeItem(`localstorage://${ex}-model-labels`);
+      });
+      
+      // Fallback dla starego klucza
       localStorage.removeItem('localstorage://exercise-model');
       localStorage.removeItem('localstorage://exercise-model-labels');
 
       // 2. Czyścimy Serwer
       await fetch('/api/reset-model', { method: 'POST' });
 
-      setStatus("Model został pomyślnie USUNIĘTY. Możesz trenować od nowa.");
+      setStatus("Wszystkie modele zostały usunięte. Możesz trenować od nowa.");
       setDatasetFiles([]);
     } catch (err) {
       setStatus(`Błąd podczas usuwania: ${err.message}`);

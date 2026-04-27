@@ -2,24 +2,9 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { angleDeg, createSpeakFunction, clamp } from '../utils';
 import { ExerciseModel } from '../ml/ExerciseModel';
 import { supabase } from '../supabaseClient';
+import { DETECTION_PARAMS } from '../config/detectionParams';
 
-// Konfiguracja progów tolerancji (Magic Numbers)
-const CONFIG = {
-  SQUAT_PHASE_KNEE_ANGLE: 162,       // Zwiększono z 150, aby analiza zaczynała się szybciej
-  BACK_ROUNDED_ANGLE: 160,           // Zmniejszono rygor z 165 na 160
-  BACK_LEAN_MAX: 55,                 // Zmniejszono rygor z 50 na 55
-  BACK_LEAN_WARNING: 40,
-  HEEL_LIFT_THRESHOLD_Y: 0.03,       // Zmniejszono - 0.03 było zbyt "twarde"
-  HEEL_LIFT_THRESHOLD_DIFF: 0.01,    // Nowy parametr: czułość relacji pięta-palce
-  HEEL_LIFT_FRAMES_REQUIRED: 18,     // Zwiększono z 10 na 18 dla ekstremalnej pewności błędu
-  REP_DOWN_ANGLE: 90,                // Zmniejszono z 110
-  REP_UP_ANGLE: 160,                 // Zmniejszono z 165
-  REP_COOLDOWN_MS: 1000,             // Zmniejszono z 1200
-  DEPTH_WARNING_ANGLE: 100,          // Zmniejszono z 110
-  DEPTH_PERFECT_ANGLE: 85            // Zmniejszono z 105
-};
-
-export const useWorkoutDetection = (isActive, isGuest, onWorkoutFinish) => {
+export const useWorkoutDetection = (isActive, isGuest, onWorkoutFinish, exerciseId = 'squat') => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const poseRef = useRef(null);
@@ -39,6 +24,8 @@ export const useWorkoutDetection = (isActive, isGuest, onWorkoutFinish) => {
   const [qualityAlert, setQualityAlert] = useState(null);
   const [kneeAngle, setKneeAngle] = useState(180);
   const [backAngle, setBackAngle] = useState(0);
+  const [elbowAngle, setElbowAngle] = useState(180);
+  const [jackArmAngle, setJackArmAngle] = useState(0);
   const [isBackPoor, setIsBackPoor] = useState(false);
   const [isShallow, setIsShallow] = useState(false);
 
@@ -57,6 +44,8 @@ export const useWorkoutDetection = (isActive, isGuest, onWorkoutFinish) => {
 
   // Smoothing refs
   const smoothKneeAngle = useRef(180);
+  const smoothElbowAngle = useRef(180);
+  const smoothJackArmAngle = useRef(0);
   const smoothBackAngle = useRef(0);
   const smoothHeadBackAngle = useRef(0);
   const lastPredictionsRef = useRef({ lean: 0, valgus: 0, heels_up: 0, shallow: 0 });
@@ -76,40 +65,41 @@ export const useWorkoutDetection = (isActive, isGuest, onWorkoutFinish) => {
     createSpeakFunction(lastSpokenRef)(text, type, cooldown, cancelPrevious);
   }, []);
 
-  const startDataset = useCallback((labels) => {
+  const startDataset = useCallback((labels, selectedExerciseId = exerciseId) => {
     datasetLabels.current = labels;
     datasetFrames.current = [];
     isRecordingDatasetRef.current = true;
     setIsRecordingDataset(true);
-    speak("Rozpoczęto nagrywanie danych", "info", 1000);
-  }, [speak]);
+    speak(`Rozpoczęto nagrywanie danych dla ${selectedExerciseId}`, "info", 1000);
+  }, [speak, exerciseId]);
 
-  const stopAndExportDataset = useCallback(async () => {
+  const stopAndExportDataset = useCallback(async (selectedExerciseId = exerciseId) => {
     isRecordingDatasetRef.current = false;
     setIsRecordingDataset(false);
     if (datasetFrames.current.length === 0) {
       speak("Brak zebranych danych", "error", 1000);
       return;
     }
-    
+
     // 1. Zapis lokalny (Download)
-    const payload = { frames: datasetFrames.current };
+    const payload = { exercise: selectedExerciseId, frames: datasetFrames.current };
     const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `dataset_${Date.now()}.json`;
+    a.download = `trening_${selectedExerciseId}_${Date.now()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
-    // 2. Synchronizacja z chmurą (Supabase) - NOWOŚĆ
+
+    // 2. Synchronizacja z chmurą (Supabase)
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase.from('training_data').insert({
         payload: payload,
         user_id: user?.id || 'guest',
+        exercise_id: selectedExerciseId,
         created_at: new Date().toISOString()
       });
       if (error) throw error;
@@ -120,7 +110,7 @@ export const useWorkoutDetection = (isActive, isGuest, onWorkoutFinish) => {
     }
 
     datasetFrames.current = [];
-  }, [speak]);
+  }, [speak, exerciseId]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -134,63 +124,92 @@ export const useWorkoutDetection = (isActive, isGuest, onWorkoutFinish) => {
   // Load ML Model
   useEffect(() => {
     const loadModel = async () => {
-      console.log("Inicjalizacja ładowania modelu...");
-      
+      console.log(`Inicjalizacja ładowania modelu dla ćwiczenia: ${exerciseId}...`);
+      setIsModelLoaded(false);
+      isModelLoadedRef.current = false;
+
+      const modelFilename = exerciseId === 'squat' ? 'model.json' : `${exerciseId}_model.json`;
+      const localStorePath = `localstorage://${exerciseId}-model`;
+      const oldLocalStorePath = 'localstorage://exercise-model';
+
       // 1. Próba załadowania z Supabase Storage (Najnowszy wspólny model)
-      const storageUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/models/model.json`;
-      
+      const storageUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/models/${modelFilename}`;
+
       try {
-        // Sprawdzamy czy plik istnieje prostym fetchem
-        const checkRes = await fetch(storageUrl, { method: 'GET', range: 'bytes=0-0' }); 
-        if (checkRes.ok || checkRes.status === 206) {
-          console.log("Znaleziono wspólny model w chmurze, pobieranie...");
+        // Ciche sprawdzenie czy plik istnieje w Supabase Storage
+        const checkRes = await fetch(storageUrl, { method: 'HEAD' });
+        if (checkRes.ok) {
           const loaded = await mlModelRef.current.load(storageUrl);
           if (loaded) {
-            console.log("✅ SUKCES: Załadowano wspólny model z Supabase Storage");
+            console.log(`✅ SUKCES: Załadowano model ${exerciseId} z Supabase Storage`);
             setIsModelLoaded(true);
             isModelLoadedRef.current = true;
             return;
           }
         }
-      } catch (e) { 
-        console.warn("Błąd podczas próby pobrania modelu z chmury (CORS? Brak pliku?):", e.message); 
+      } catch (e) {
+        // Ignorujemy błędy sieciowe przy sprawdzaniu chmury
       }
 
-      // 2. Próba załadowania z serwera lokalnego
+      // 2. Próba załadowania z serwera lokalnego (folder /public/models)
       try {
-        const serverLoaded = await mlModelRef.current.load('/models/model.json');
-        if (serverLoaded) {
-          console.log("✅ Załadowano model z serwera lokalnego");
-          setIsModelLoaded(true);
-          isModelLoadedRef.current = true;
-          return;
+        const checkServer = await fetch(`/models/${modelFilename}`, { method: 'HEAD' });
+        if (checkServer.ok) {
+          const serverLoaded = await mlModelRef.current.load(`/models/${modelFilename}`);
+          if (serverLoaded) {
+            console.log(`✅ Załadowano model ${exerciseId} z serwera`);
+            setIsModelLoaded(true);
+            isModelLoadedRef.current = true;
+            return;
+          }
         }
-      } catch (e) { console.log("Brak modelu na serwerze lokalnym."); }
+      } catch (e) { /* cicho */ }
 
-      // 3. Sprawdź localstorage
-      const localLoaded = await mlModelRef.current.load();
+      // 3. Sprawdź localstorage (jeśli użytkownik trenował coś u siebie)
+      let localLoaded = false;
+      const hasNewModel = localStorage.getItem(`${localStorePath}-labels`);
+      if (hasNewModel) {
+        localLoaded = await mlModelRef.current.load(localStorePath);
+      }
+
+      // Fallback dla starych modeli przysiadów przed migracją na multi-model
+      if (!localLoaded && exerciseId === 'squat') {
+        const hasOldModel = localStorage.getItem(`${oldLocalStorePath}-labels`);
+        if (hasOldModel) {
+          localLoaded = await mlModelRef.current.load(oldLocalStorePath);
+          if (localLoaded) console.log("✅ Załadowano model przysiadów ze starej pamięci (fallback)");
+        }
+      }
+
       if (localLoaded) {
-        console.log("✅ Załadowano model z LocalStorage");
+        const inputSize = mlModelRef.current.model?.layers[0]?.batchInputShape[1];
+        console.log(`✅ Załadowano model ${exerciseId} z LocalStorage. Wejścia (features): ${inputSize}`);
+        if (inputSize && inputSize !== 14) {
+          console.warn(`⚠️ OSTRZEŻENIE: Model ma ${inputSize} cech, a aktualna wersja oczekuje 14. Zalecany ponowny trening!`);
+        }
         setIsModelLoaded(true);
         isModelLoadedRef.current = true;
       } else {
-        console.log("ℹ️ Nie znaleziono żadnego modelu AI. Używam heurystyki.");
+        console.log(`ℹ️ Tryb Heurystyczny: ${exerciseId} (brak modelu AI - nagraj dane, aby go stworzyć)`);
       }
     };
     loadModel();
-  }, []);
+  }, [exerciseId]);
 
   useEffect(() => { stageRef.current = workoutStage; }, [workoutStage]);
 
   useEffect(() => {
     if (isActive) {
       // Przeładuj model przy każdym rozpoczęciu treningu, aby uwzględnić nowe zmiany
-      mlModelRef.current.load('/models/model.json').then(loaded => {
+      const modelFilename = exerciseId === 'squat' ? 'model.json' : `${exerciseId}_model.json`;
+      const localStorePath = `localstorage://${exerciseId}-model`;
+
+      mlModelRef.current.load(`/models/${modelFilename}`).then(loaded => {
         if (loaded) {
           setIsModelLoaded(true);
           isModelLoadedRef.current = true;
         } else {
-          mlModelRef.current.load().then(l => {
+          mlModelRef.current.load(localStorePath).then(l => {
             setIsModelLoaded(l);
             isModelLoadedRef.current = l;
           });
@@ -294,6 +313,10 @@ export const useWorkoutDetection = (isActive, isGuest, onWorkoutFinish) => {
 
       if (results.poseLandmarks) {
         const lm = results.poseLandmarks;
+        if (!lm || lm.length < 33) {
+          ctx.restore(); // Przywracamy kontekst przed wyjściem
+          return;
+        }
         const aspectRatio = width / height;
         const stage = stageRef.current;
 
@@ -315,7 +338,9 @@ export const useWorkoutDetection = (isActive, isGuest, onWorkoutFinish) => {
         const isSide = Math.abs(lm[11].x - lm[12].x) < 0.3;
 
         const isLeftDominant = (lm[11].visibility || 0) + (lm[23].visibility || 0) + (lm[25].visibility || 0) > (lm[12].visibility || 0) + (lm[24].visibility || 0) + (lm[26].visibility || 0);
-        const sIdx = isLeftDominant ? { s: 11, h: 23, k: 25, a: 27, heel: 29, toe: 31, ear: 7, isLeft: true } : { s: 12, h: 24, k: 26, a: 28, heel: 30, toe: 32, ear: 8, isLeft: false };
+        const sIdx = isLeftDominant
+          ? { s: 11, h: 23, k: 25, a: 27, heel: 29, toe: 31, ear: 7, e: 13, w: 15, isLeft: true }
+          : { s: 12, h: 24, k: 26, a: 28, heel: 30, toe: 32, ear: 8, e: 14, w: 16, isLeft: false };
 
         if (stage === 'calibrating') {
           if (!coreV) setSetupHint("Pokaż sylwetkę");
@@ -341,52 +366,55 @@ export const useWorkoutDetection = (isActive, isGuest, onWorkoutFinish) => {
         // Kąt głowa-bark-biodro do wykrywania "garbienia się"
         const rawHeadBack = Math.round(angleDeg({ x: lm[sIdx.ear].x * aspectRatio, y: lm[sIdx.ear].y }, { x: lm[sIdx.s].x * aspectRatio, y: lm[sIdx.s].y }, { x: lm[sIdx.h].x * aspectRatio, y: lm[sIdx.h].y }));
 
-        // --- Kalkulacja dystansu pięty dla aktywnej stopy ---
-        const activeDist = Math.abs(lm[sIdx.heel].y - lm[sIdx.toe].y);
+        // Kąt w łokciu dla pompek
+        const rawElbowA = Math.round(angleDeg({ x: lm[sIdx.s].x * aspectRatio, y: lm[sIdx.s].y }, { x: lm[sIdx.e].x * aspectRatio, y: lm[sIdx.e].y }, { x: lm[sIdx.w].x * aspectRatio, y: lm[sIdx.w].y }));
 
-        // Zapisujemy dystans, gdy użytkownik stoi (tylko przy wysokiej pewności landmarków)
-        if (rawKneeA > 172 && (lm[sIdx.heel].visibility || 0) > 0.8 && (lm[sIdx.toe].visibility || 0) > 0.8) {
-          const currentInit = sIdx.isLeft ? initialHeelToeDistL.current : initialHeelToeDistR.current;
-          
-          // Jeśli nowo zmierzony dystans jest większy, aktualizujemy od razu (stopa jest bardziej płasko)
-          // Jeśli jest mniejszy, aktualizujemy bardzo powoli, aby uniknąć driftu przy staniu na palcach
-          if (currentInit === null || activeDist > currentInit) {
-            if (sIdx.isLeft) initialHeelToeDistL.current = activeDist;
-            else initialHeelToeDistR.current = activeDist;
-          } else {
-            // Bardzo wolna adaptacja w dół (np. gdy użytkownik oddali się od kamery)
-            if (sIdx.isLeft) initialHeelToeDistL.current = initialHeelToeDistL.current * 0.99 + activeDist * 0.01;
-            else initialHeelToeDistR.current = initialHeelToeDistR.current * 0.99 + activeDist * 0.01;
-          }
-        }
+        // Kąt dla pajacyków (ramiona wzgledem tułowia)
+        const rawJackArmA = Math.round(angleDeg({ x: lm[sIdx.h].x * aspectRatio, y: lm[sIdx.h].y }, { x: lm[sIdx.s].x * aspectRatio, y: lm[sIdx.s].y }, { x: lm[sIdx.w].x * aspectRatio, y: lm[sIdx.w].y }));
+
+        // Logika re-kalibracji została przeniesiona do sekcji Precyzyjnej Detekcji 3D poniżej.
 
         smoothKneeAngle.current = Math.round(alpha * rawKneeA + (1 - alpha) * smoothKneeAngle.current);
+        smoothElbowAngle.current = Math.round(alpha * rawElbowA + (1 - alpha) * smoothElbowAngle.current);
+        smoothJackArmAngle.current = Math.round(alpha * rawJackArmA + (1 - alpha) * smoothJackArmAngle.current);
         smoothBackAngle.current = Math.round(alpha * rawBackT + (1 - alpha) * smoothBackAngle.current);
         smoothHeadBackAngle.current = Math.round(alpha * rawHeadBack + (1 - alpha) * smoothHeadBackAngle.current);
 
         const kneeA = smoothKneeAngle.current;
+        const elbowA = smoothElbowAngle.current;
+        const jackArmA = smoothJackArmAngle.current;
         const backT = smoothBackAngle.current;
         const headBackA = smoothHeadBackAngle.current;
 
         setKneeAngle(kneeA);
+        setElbowAngle(elbowA);
+        setJackArmAngle(jackArmA);
         setBackAngle(backT);
 
-        const isSquattingPhase = kneeA < CONFIG.SQUAT_PHASE_KNEE_ANGLE;
+        const isActivePhase = (() => {
+          if (exerciseId === 'pushup') return elbowA < 140;
+          if (exerciseId === 'jumping_jacks') return jackArmA > 60;
+          return kneeA < DETECTION_PARAMS.SQUAT.PHASE_KNEE_ANGLE;
+        })();
 
-        // --- Detekcja odrywania pięt (Heel-to-Toe Ratio) tylko dla stopy z przodu ---
-        let isCurrentlyLifted = false;
+        // --- Precyzyjna Detekcja Odrywania Pięt (3D Vertical Displacement) ---
+        const worldLm = results.poseWorldLandmarks || lm;
+        const heelIdx = sIdx.isLeft ? 27 : 28; // Kostka (Ankle)
+        const toeIdx = sIdx.isLeft ? 31 : 32; // Palce (Foot Index)
+
+        const activeDist = Math.abs(worldLm[heelIdx].y - worldLm[toeIdx].y);
         const activeInitDist = sIdx.isLeft ? initialHeelToeDistL.current : initialHeelToeDistR.current;
-        
-        // Obliczamy też surową różnicę (heel.y - toe.y). 
-        // Jeśli pięta idzie w górę, jej Y maleje, więc ta różnica staje się mniejsza (bardziej ujemna).
-        const currentRelY = lm[sIdx.heel].y - lm[sIdx.toe].y;
 
-        // Błąd jeśli dystans spadł o 16% LUB wzrósł o 35% (poluzowano rygor)
-        if (activeInitDist && (activeDist < activeInitDist * 0.84 || activeDist > activeInitDist * 1.35)) {
-          isCurrentlyLifted = true;
+        // Warunek gotowości do kalibracji stóp (użytkownik stoi prosto i stabilnie)
+        const isReadyForSquat = coreV && anklesV && (rawKneeA > 170) && isSide;
+
+        // Inicjalizacja "Poziomu Zero" dla stopy przy starcie
+        if (!activeInitDist && isReadyForSquat) {
+          if (sIdx.isLeft) initialHeelToeDistL.current = activeDist;
+          else initialHeelToeDistR.current = activeDist;
         }
-        // Usunięto isSquattingPhase, aby błąd był widoczny nawet przy pozycji stojącej (ułatwia testowanie)
-        const isReady = coreV && anklesV && isSide;
+
+        const isReady = coreV && anklesV && (exerciseId === 'jumping_jacks' ? true : isSide);
 
         if (stage === 'active') {
           if (!isReady) {
@@ -410,13 +438,14 @@ export const useWorkoutDetection = (isActive, isGuest, onWorkoutFinish) => {
             statsRef.current.totalFrames++; statsRef.current.kneeAngles.push(kneeA); statsRef.current.backAngles.push(backT);
 
             // --- Inteligentne Bramkowanie Danych (Smart Gating) ---
+
             if (isRecordingDatasetRef.current && isReady) {
-              const features = ExerciseModel.extractFeatures(lm);
+              const features = ExerciseModel.extractFeatures(worldLm);
               if (features) {
                 // Jeśli użytkownik stoi prosto, zapisujemy to jako "Poprawne" (wszystkie błędy false)
                 // Nawet jeśli wybrał tag błędu, bo błąd techniczny dzieje się tylko w ruchu.
-                const effectiveLabels = isSquattingPhase 
-                  ? datasetLabels.current 
+                const effectiveLabels = isActivePhase
+                  ? datasetLabels.current
                   : { valgus: false, lean: false, shallow: false, heels_up: false };
 
                 datasetFrames.current.push({
@@ -428,31 +457,49 @@ export const useWorkoutDetection = (isActive, isGuest, onWorkoutFinish) => {
 
             // --- Analiza Techniki (PURE ML) ---
             const preds = lastPredictionsRef.current;
-            let isBackBad = (preds.lean > 0.6 || preds.valgus > 0.6);
-            let currentIsHeelLifted = preds.heels_up > 0.6;
-            let currentIsShallow = preds.shallow > 0.6;
+
+            // Logowanie predykcji do konsoli (ułatwia debugowanie)
+            if (statsRef.current.totalFrames % 30 === 0) {
+              console.log("ML Predictions:", preds);
+            }
+
+            // Obliczamy czy plecy są za bardzo pochylone (Heurystyka + ML)
+            // Dodajemy wagę dla 3D torso lean, jeśli ML go wykryje
+            let isBackBad = (preds.lean > 0.28 || backT > DETECTION_PARAMS.SQUAT.BACK_LEAN_MAX);
+
+            // Valgus: Ignorujemy jeśli użytkownik stoi bokiem (zbyt mały hipDist w X), bo detekcja 3D w Z jest mało wiarygodna
+            const hipDistX = Math.abs(lm[11].x - lm[12].x);
+            const isFacingCamera = hipDistX > 0.4;
+            let currentValgus = isFacingCamera ? (preds.valgus > 0.5) : false;
+
+            let currentIsHeelLifted = (preds.heels_up > 0.65) || (activeInitDist && (activeDist > activeInitDist + DETECTION_PARAMS.SQUAT.HEEL_LIFT_SENSITIVITY));
+
+            let currentIsShallow = preds.shallow > 0.35;
 
             // Pobierz nową predykcję dla następnej klatki
             if (isModelLoadedRef.current && !mlModelRef.current.isTraining) {
-              mlModelRef.current.predict(lm).then(p => {
-                if (p) lastPredictionsRef.current = p;
-              }).catch(() => {});
+              mlModelRef.current.predict(worldLm).then(p => {
+                if (p) {
+                  lastPredictionsRef.current = p;
+                }
+              }).catch((e) => { console.error("ML Predict Error:", e); });
             } else if (!mlModelRef.current.isTraining) {
+              // Rezerwowy endpoint serwerowy
               fetch('/api/predict', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ landmarks: lm })
+                body: JSON.stringify({ landmarks: worldLm, exerciseId })
               })
-              .then(res => res.json())
-              .then(p => {
-                if (p && !p.error) lastPredictionsRef.current = p;
-              }).catch(() => {});
+                .then(res => res.json())
+                .then(p => {
+                  if (p && !p.error) lastPredictionsRef.current = p;
+                }).catch(() => { });
             }
 
-            setIsBackPoor(isBackBad && isSquattingPhase);
+            setIsBackPoor(isBackBad && isActivePhase);
             setIsHeelLifted(currentIsHeelLifted);
 
-            if (isSquattingPhase) {
+            if (isActivePhase && exerciseId === 'squat') {
               if (isBackBad) {
                 statsRef.current.poorBackFrames++;
                 speak("Wyprostuj plecy", "back_error", 6000);
@@ -463,54 +510,109 @@ export const useWorkoutDetection = (isActive, isGuest, onWorkoutFinish) => {
               }
             }
 
-            const isDeep = kneeA < CONFIG.DEPTH_PERFECT_ANGLE;
-            let bColor = isBackBad ? "#ef4444" : "#22c55e"; 
+            const isDeep = (() => {
+              if (exerciseId === 'pushup') return elbowA < DETECTION_PARAMS.PUSHUP.DEEP_ANGLE;
+              if (exerciseId === 'jumping_jacks') return jackArmA > DETECTION_PARAMS.JUMPING_JACKS.DEEP_ANGLE;
+              if (exerciseId === 'lunge') return kneeA < DETECTION_PARAMS.LUNGE.DEEP_ANGLE;
+              return kneeA < DETECTION_PARAMS.SQUAT.DEPTH_PERFECT_ANGLE;
+            })();
+
+            let bColor = isBackBad ? "#ef4444" : "#22c55e";
             let bStat = isBackBad ? "POOR" : "STABLE";
 
             ctx.font = "bold 14px monospace"; ctx.shadowBlur = 4; ctx.shadowColor = "black";
-            ctx.fillStyle = isDeep ? "#22c55e" : "#f59e0b"; ctx.fillText(`${kneeA}° DEPTH`, lm[sIdx.k].x * width + 15, lm[sIdx.k].y * height);
+            if (exerciseId === 'pushup') {
+              ctx.fillStyle = isDeep ? "#22c55e" : "#f59e0b"; ctx.fillText(`${elbowA}° ELBOW`, lm[sIdx.e].x * width + 15, lm[sIdx.e].y * height);
+            } else if (exerciseId === 'jumping_jacks') {
+              ctx.fillStyle = isDeep ? "#22c55e" : "#f59e0b"; ctx.fillText(`${jackArmA}° ARMS`, lm[sIdx.w].x * width + 15, lm[sIdx.w].y * height);
+            } else {
+              ctx.fillStyle = isDeep ? "#22c55e" : "#f59e0b"; ctx.fillText(`${kneeA}° DEPTH`, lm[sIdx.k].x * width + 15, lm[sIdx.k].y * height);
+            }
             ctx.fillStyle = bColor; ctx.fillText(`${backT}° BACK`, lm[sIdx.h].x * width + 15, lm[sIdx.h].y * height);
 
             if (currentIsHeelLifted) { ctx.beginPath(); ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 5; ctx.moveTo(lm[sIdx.heel].x * width - 20, lm[sIdx.heel].y * height + 5); ctx.lineTo(lm[sIdx.heel].x * width + 20, lm[sIdx.heel].y * height + 5); ctx.stroke(); }
 
-            // --- Liczenie powtórzeń (Ulepszona Maszyna Stanów) ---
-            if (kneeA < CONFIG.REP_DOWN_ANGLE && phaseRef.current !== "down") {
-              phaseRef.current = "down";
-              setPhase("down");
-              setIsShallow(false);
-            }
+            // --- Liczenie powtórzeń (Dynamiczna Maszyna Stanów) ---
+            const repConfig = {
+              pushup: { angle: elbowA, down: DETECTION_PARAMS.PUSHUP.DOWN_ANGLE, up: DETECTION_PARAMS.PUSHUP.UP_ANGLE },
+              lunge: { angle: kneeA, down: DETECTION_PARAMS.LUNGE.DOWN_ANGLE, up: DETECTION_PARAMS.LUNGE.UP_ANGLE },
+              jumping_jacks: { angle: jackArmA, down: DETECTION_PARAMS.JUMPING_JACKS.DOWN_ANGLE, up: DETECTION_PARAMS.JUMPING_JACKS.UP_ANGLE },
+              squat: { angle: kneeA, down: DETECTION_PARAMS.SQUAT.REP_DOWN_ANGLE, up: DETECTION_PARAMS.SQUAT.REP_UP_ANGLE }
+            };
 
-            if (kneeA > CONFIG.REP_UP_ANGLE && phaseRef.current === "down") {
-              const nowTime = Date.now();
-              phaseRef.current = "up";
-              setPhase("up");
+            const currentCfg = repConfig[exerciseId] || repConfig.squat;
+            const currentA = currentCfg.angle;
 
-              if (nowTime - lastRepTime.current > CONFIG.REP_COOLDOWN_MS) {
-                const framesToLookBack = Math.min(statsRef.current.kneeAngles.length, Math.round(currentFps * 2.5));
-                const recentAngles = statsRef.current.kneeAngles.slice(-framesToLookBack);
-                const minKneeInRep = recentAngles.length ? Math.min(...recentAngles) : kneeA;
+            // --- Próba użycia AI do detekcji fazy (jeśli model jest gotowy) ---
+            const mlUp = preds.up || preds.góra || 0;
+            const mlDown = preds.down || preds.dół || 0;
+            const useMLForPhases = (mlUp > 0.5 || mlDown > 0.5);
 
-                if (minKneeInRep > CONFIG.DEPTH_WARNING_ANGLE || currentIsShallow) {
-                  statsRef.current.shallowReps++;
-                  speak("Zejdź niżej", "depth_error", 5000);
-                  setIsShallow(true);
-                  setTimeout(() => setIsShallow(false), 3000);
-                } else {
+            if (useMLForPhases) {
+              // AI decyduje o fazie
+              if (mlDown > 0.85 && phaseRef.current !== "down") {
+                phaseRef.current = "down";
+                setPhase("down");
+                setIsShallow(false);
+              }
+              if (mlUp > 0.85 && phaseRef.current === "down") {
+                const nowTime = Date.now();
+                phaseRef.current = "up";
+                setPhase("up");
+                if (nowTime - lastRepTime.current > DETECTION_PARAMS.REP_COOLDOWN_MS) {
                   setRepCount(prev => { repCountRef.current = prev + 1; return prev + 1; });
                   lastRepTime.current = nowTime;
-                  setIsShallow(false);
+                }
+              }
+            } else {
+              // Klasyczne liczenie na podstawie kątów
+              if (currentA < currentCfg.down && phaseRef.current !== "down") {
+                phaseRef.current = "down";
+                setPhase("down");
+                setIsShallow(false);
+              }
+
+              if (currentA > currentCfg.up && phaseRef.current === "down") {
+                const nowTime = Date.now();
+                phaseRef.current = "up";
+                setPhase("up");
+
+                if (nowTime - lastRepTime.current > DETECTION_PARAMS.REP_COOLDOWN_MS) {
+                  if (exerciseId === 'squat') {
+                    const framesToLookBack = Math.min(statsRef.current.kneeAngles.length, Math.round(currentFps * 2.5));
+                    const recentAngles = statsRef.current.kneeAngles.slice(-framesToLookBack);
+                    const minKneeInRep = recentAngles.length ? Math.min(...recentAngles) : kneeA;
+
+                    if (minKneeInRep > DETECTION_PARAMS.SQUAT.DEPTH_WARNING_ANGLE || currentIsShallow) {
+                      statsRef.current.shallowReps++;
+                      speak("Zejdź niżej", "depth_error", 5000);
+                      setIsShallow(true);
+                      setTimeout(() => setIsShallow(false), 3000);
+                    } else {
+                      setRepCount(prev => { repCountRef.current = prev + 1; return prev + 1; });
+                      lastRepTime.current = nowTime;
+                      setIsShallow(false);
+                    }
+                  } else {
+                    setRepCount(prev => { repCountRef.current = prev + 1; return prev + 1; });
+                    lastRepTime.current = nowTime;
+                  }
                 }
               }
             }
 
-            ctx.save(); ctx.fillStyle = "rgba(2, 6, 23, 0.9)"; ctx.beginPath(); ctx.roundRect(10, 10, 240, 150, 15); ctx.fill();
-            ctx.fillStyle = "#38bdf8"; ctx.font = "bold 18px monospace"; ctx.fillText(`SQUATS: ${repCountRef.current}`, 25, 35);
-            ctx.font = "11px monospace"; ctx.fillStyle = isDeep ? "#22c55e" : "#f59e0b"; ctx.fillText(`DEPTH: ${isDeep ? '✓ PERFECT' : '⚠ GO LOWER'}`, 25, 60);
-            ctx.fillStyle = bColor; ctx.fillText(`BACK: ${bStat}`, 25, 80);
-            ctx.fillStyle = currentIsHeelLifted ? "#ef4444" : "#22c55e"; ctx.fillText(`FEET: ${currentIsHeelLifted ? '⚠ HEELS UP!' : '✓ GROUNDED'}`, 25, 100);
-            ctx.fillStyle = alertMessage ? "#ef4444" : "#22c55e"; ctx.fillText(`CAM: ${fpsRef.current} FPS`, 25, 120);
-            // Wyświetlamy status modelu ML
-            ctx.fillStyle = isModelLoaded ? "#a855f7" : "#64748b"; ctx.fillText(`AI MODEL: ${isModelLoaded ? 'ACTIVE' : 'HEURISTICS'}`, 25, 140);
+            const exerciseName = exerciseId.toUpperCase().replace('_', ' ');
+            ctx.save(); ctx.fillStyle = "rgba(2, 6, 23, 0.9)"; ctx.beginPath(); ctx.roundRect(10, 10, 240, exerciseId === 'squat' ? 150 : 80, 15); ctx.fill();
+            ctx.fillStyle = "#38bdf8"; ctx.font = "bold 18px monospace"; ctx.fillText(`${exerciseName}: ${repCountRef.current}`, 25, 35);
+            if (exerciseId === 'squat') {
+              ctx.font = "11px monospace"; ctx.fillStyle = isDeep ? "#22c55e" : "#f59e0b"; ctx.fillText(`DEPTH: ${isDeep ? '✓ PERFECT' : '⚠ GO LOWER'}`, 25, 60);
+              ctx.fillStyle = bColor; ctx.fillText(`BACK: ${bStat}`, 25, 80);
+              ctx.fillStyle = currentIsHeelLifted ? "#ef4444" : "#22c55e"; ctx.fillText(`FEET: ${currentIsHeelLifted ? '⚠ HEELS UP!' : '✓ GROUNDED'}`, 25, 100);
+            }
+            ctx.fillStyle = alertMessage ? "#ef4444" : "#22c55e"; ctx.fillText(`CAM: ${fpsRef.current} FPS`, 25, exerciseId === 'squat' ? 120 : 60);
+            if (exerciseId === 'squat') {
+              ctx.fillStyle = isModelLoaded ? "#a855f7" : "#64748b"; ctx.fillText(`AI MODEL: ${isModelLoaded ? 'ACTIVE' : 'HEURISTICS'}`, 25, 140);
+            }
             ctx.restore();
           }
         }
@@ -522,10 +624,16 @@ export const useWorkoutDetection = (isActive, isGuest, onWorkoutFinish) => {
     let isDestroyed = false;
     const init = async () => {
       try {
-        if (!window.Pose) return;
+        console.log("Inicjalizacja kamery i AI...");
+        if (!window.Pose || !window.Camera) {
+          console.error("Biblioteki MediaPipe nie są jeszcze załadowane.");
+          return;
+        }
+
         poseRef.current = new window.Pose({ locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${f}` });
         poseRef.current.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
         poseRef.current.onResults(onResults);
+
         cameraRef.current = new window.Camera(videoRef.current, {
           onFrame: async () => {
             if (videoRef.current && poseRef.current && !isDestroyed) {
@@ -534,10 +642,14 @@ export const useWorkoutDetection = (isActive, isGuest, onWorkoutFinish) => {
           },
           width: 1280, height: 720
         });
+
+        console.log("Próba uruchomienia strumienia wideo...");
         await cameraRef.current.start();
+        console.log("Kamera aktywna.");
       } catch (err) {
         if (!isDestroyed) {
-          console.error(err); setSetupHint("Błąd kamery");
+          console.error("Błąd startu kamery:", err);
+          setSetupHint("Błąd kamery - sprawdź uprawnienia");
         }
       }
     };
