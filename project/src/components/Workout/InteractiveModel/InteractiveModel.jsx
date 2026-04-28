@@ -37,10 +37,13 @@ function Model({ onPartClick, selectedCategory }) {
           <mesh
             key={name}
             geometry={obj.geometry}
-            onPointerOver={(e) => { e.stopPropagation(); if(isSelectable) setHovered(name); }}
+            onPointerOver={(e) => { 
+              e.stopPropagation(); 
+              if(isSelectable) setHovered(name); 
+            }}
             onPointerOut={() => setHovered(null)}
             onClick={(e) => {
-              e.stopPropagation(); 
+              e.stopPropagation(); // Kluczowe: zatrzymuje event, żeby nie odpalił onPointerMissed
               if (isSelectable) {
                 onPartClick(mappedCategory); 
               }
@@ -52,7 +55,6 @@ function Model({ onPartClick, selectedCategory }) {
               emissiveIntensity={isHighlighted ? 0.5 : (isHovered ? 0.3 : 0)}
               roughness={0.3}
               metalness={0.8}
-              transparent={false}
             />
           </mesh>
         );
@@ -63,17 +65,13 @@ function Model({ onPartClick, selectedCategory }) {
 
 export default function InteractiveModel({ onSelect, currentCategory }) {
   return (
-    <div className="w-full h-full bg-slate-950 rounded-2xl border-4 border-slate-700 overflow-hidden shadow-2xl relative">
-      <div className="absolute top-4 left-4 z-50 pointer-events-none">
-        <span className="text-[10px] font-black bg-sky-500 text-slate-950 px-2 py-1 rounded uppercase italic">
-          Atlas Mięśni 3D
-        </span>
-      </div>
-      
+    <div className="w-full h-full bg-slate-950 overflow-hidden relative">
       <Canvas 
         dpr={[1, 2]} 
         camera={{ fov: 45, position: [0, 0, 5] }}
         style={{ touchAction: 'none' }} 
+        // onPointerMissed odpala się, gdy klikniesz w tło (poza modelem)
+        onPointerMissed={() => onSelect('')} 
       >
         <color attach="background" args={['#020617']} />
         

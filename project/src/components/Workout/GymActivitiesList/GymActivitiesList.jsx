@@ -5,24 +5,11 @@ import { ACTIVITIES } from '../../../constants';
 const GymActivitiesList = ({ onSelectActivity, filter, setFilter }) => {
   const categories = ['Wszystkie', 'Nogi', 'Klatka', 'Plecy', 'Core', 'Barki', 'Biceps', 'Triceps', 'Kardio', 'Przedramie'];
   
-  const filteredActivities = filter === 'Wszystkie' 
+const filteredActivities = (!filter || filter === 'Wszystkie') 
     ? ACTIVITIES 
-    : ACTIVITIES.filter(a => a.category === filter);
-
+    : ACTIVITIES.filter(a => a.category.toUpperCase() === filter.toUpperCase());
   return (
     <div className="h-full flex flex-col p-6 overflow-hidden">
-      {/* Category Filter */}
-      <div className="flex gap-2 flex-wrap pb-6 shrink-0">
-        {categories.map(cat => (
-          <button
-            key={cat}
-            onClick={() => setFilter(cat)}
-            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap border ${filter === cat ? 'bg-sky-500 border-sky-400 text-slate-950 shadow-[0_0_20px_rgba(14,165,233,0.4)]' : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-sky-400 hover:border-sky-500/50'}`}
-          >
-            {cat}
-          </button>
-        ))}
-      </div>
 
       {/* Activities Grid */}
       <div className="flex-grow overflow-y-auto pr-2 grid grid-cols-1 md:grid-cols-2 gap-4 content-start pb-10">

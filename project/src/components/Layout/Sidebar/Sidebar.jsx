@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   BrainCircuit, LayoutGrid, Activity as ActivityIcon, 
-  History, User, LogOut, ChevronLeft, Home 
+  History, User, LogOut, ChevronLeft, Menu 
 } from 'lucide-react';
 import { supabase } from '../../../supabaseClient';
 
@@ -24,11 +24,22 @@ const Sidebar = ({
 
   return (
     <>
+      {/* 1. OVERLAY dla wersji mobilnej */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] md:hidden" 
           onClick={() => setIsSidebarOpen(false)} 
         />
+      )}
+
+      {/* 2. PRZYCISK "STRZAŁKA" WIDOCZNY TYLKO GDY SIDEBAR JEST ZAMKNIĘTY (Mobile) */}
+      {!isSidebarOpen && (
+        <button
+          onClick={() => setIsSidebarOpen(true)}
+          className="md:hidden fixed top-6 left-4 z-[120] p-3 rounded-2xl bg-slate-900 border border-slate-800 text-sky-400 shadow-[0_0_20px_rgba(14,165,233,0.2)] animate-in fade-in zoom-in duration-300"
+        >
+          <ChevronLeft size={24} className="rotate-180" />
+        </button>
       )}
       
       <aside className={`bg-slate-900 border-r border-slate-800 flex flex-col transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] z-[110] 
@@ -45,12 +56,23 @@ const Sidebar = ({
             </h1>
           </div>
           
-          <button 
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
-            className={`group p-2.5 rounded-xl border border-slate-800 bg-slate-950/50 text-slate-400 transition-all duration-300 hover:border-sky-500/50 hover:text-sky-400 hover:shadow-[0_0_15px_rgba(14,165,233,0.2)] ${!isSidebarOpen ? 'md:flex hidden absolute -right-5 top-7 z-50 bg-slate-900 border-slate-700' : 'relative z-10'}`}
-          >
-            <ChevronLeft size={18} className={`transition-transform duration-500 ${!isSidebarOpen ? 'rotate-180' : ''}`} />
-          </button>
+        {/* Przycisk strzałki wewnątrz sidebara */}
+<button 
+  onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+  className={`group p-2.5 rounded-xl border border-slate-800 bg-slate-900 text-slate-400 transition-all duration-300 hover:border-sky-500 hover:text-sky-400 
+    /* Bazowy z-index, aby był nad kamerą */
+    z-[200] 
+    
+    ${!isSidebarOpen 
+      ? 'md:flex hidden absolute -right-5 top-7 bg-slate-900 border-slate-700 opacity-100' // Widoczna strzałka gdy sidebar jest zamknięty
+      : 'relative ml-auto mr-4 md:opacity-100 opacity-0 pointer-events-none md:pointer-events-auto' // UKRYTA na mobile (opacity-0), WIDOCZNA na desktop (md:opacity-100)
+    }`}
+>
+  <ChevronLeft 
+    size={18} 
+    className={`transition-transform duration-500 ${!isSidebarOpen ? 'rotate-180' : ''}`} 
+  />
+</button>
         </div>
 
         <nav className="flex-grow px-4 mt-4 space-y-2 overflow-y-auto">
