@@ -1,0 +1,1 @@
+Dzisiaj trenowałem model AI poprzez algorytm analizujący filmy, które przedstawiają ćwiczenia sportowe.
