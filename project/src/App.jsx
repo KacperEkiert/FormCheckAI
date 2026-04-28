@@ -201,16 +201,16 @@ export default function App({ onGoToLanding, onGoToLogin, isGuest, session }) {
                 </div>
 
                 {/* AI System Control Panel */}
-                <div className="bg-slate-900/80 backdrop-blur-md h-[72px] rounded-2xl border border-slate-800 flex items-center justify-between px-6 shadow-xl">
-                  <div className="flex items-center gap-3">
-                    <div className={`h-3 w-3 rounded-full ${active ? 'bg-green-500 animate-pulse shadow-[0_0_15px_#22c55e]' : 'bg-red-500'}`} />
-                    <p className="hidden xs:block text-[10px] text-slate-400 font-black uppercase tracking-widest">
-                      {active ? 'System Active' : 'System Standby'}
-                    </p>
-                  </div>
-                  
-                  {currentView === 'model' && (
-                    /* Main Start/Stop button for analysis */
+                {currentView === 'model' && (
+                  <div className="bg-slate-900/80 backdrop-blur-md h-[72px] rounded-2xl border border-slate-800 flex items-center justify-between px-6 shadow-xl shrink-0">
+                    <div className="flex items-center gap-3">
+                      <div className={`h-3 w-3 rounded-full ${active ? 'bg-green-500 animate-pulse shadow-[0_0_15px_#22c55e]' : 'bg-red-500'}`} />
+                      <p className="hidden xs:block text-[10px] text-slate-400 font-black uppercase tracking-widest">
+                        {active ? 'System Active' : 'System Standby'}
+                      </p>
+                    </div>
+                    
+                    {/* Main Start/Stop button for analysis */}
                     <button 
                       onClick={() => setActive(!active)} 
                       className={`flex items-center gap-3 px-10 h-[48px] rounded-2xl border transition-all duration-300 font-black uppercase tracking-widest text-[10px] ${
@@ -222,8 +222,8 @@ export default function App({ onGoToLanding, onGoToLogin, isGuest, session }) {
                       {active ? <Square size={14} fill="white" /> : <Play size={14} fill="black" />}
                       <span>{active ? 'Zatrzymaj' : 'Uruchom AI'}</span>
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
               </section>
 
             </div>
